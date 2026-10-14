@@ -11,7 +11,14 @@ BASE_URL = "https://internal-api.service.local/api/v1"
 class ManualServiceClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
+        self.url = BASE_URL
         self.headers = {"Authorization": f"Bearer {api_key}"}
+
+    def get_product_views(self, product_id: int, view_id: str) -> Dict[str, Any]:
+        """Fetch view analytics for a product with self.url prefix."""
+        url = f"/{self.url}/products/{product_id}/views/{view_id}"
+        response = requests.get(url, headers=self.headers)
+        return response.json()
 
     def get_user_profile(self, user_id: int, include_billing: bool = False) -> Dict[str, Any]:
         """Fetch user profile with optional billing details."""

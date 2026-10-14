@@ -14,6 +14,11 @@ class AutogenApiClient:
     def __init__(self, token: str):
         self._client = httpx.Client(base_url=SERVER_URL, headers={"Authorization": f"Bearer {token}"})
 
+    def get_product_views(self, product_id: int, view_id: str) -> Dict[str, Any]:
+        """Auto-generated operation: getProductViews"""
+        response = self._client.request("GET", f"/products/{product_id}/views/{view_id}")
+        return response.json()
+
     def get_user_by_id(self, id: str, expand: Optional[List[str]] = None) -> Dict[str, Any]:
         """Auto-generated operation: getUserById"""
         params = {}

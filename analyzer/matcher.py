@@ -181,7 +181,10 @@ def match_microservices(manual_calls: List[EndpointCall], autogen_calls: List[En
             for a_idx, a_call in enumerate(autogen_calls):
                 if a_idx in used_autogen_indices:
                     continue
-                if m_call.http_method == a_call.http_method and endpoints_match(m_call.raw_endpoint, a_call.raw_endpoint):
+                if m_call.http_method == a_call.http_method and (
+                    endpoints_match(m_call.raw_endpoint, a_call.raw_endpoint) or
+                    endpoints_match(m_call.normalized_endpoint, a_call.normalized_endpoint)
+                ):
                     matched_a_idx = a_idx
                     break
 

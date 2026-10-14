@@ -5,8 +5,20 @@ import re
 from typing import Tuple, List, Optional
 from urllib.parse import urlparse
 
-# Matches path parameter variations: {id}, {user_id}, <id>, <int:user_id>, :id
-PATH_PARAM_REGEX = re.compile(r'\{([a-zA-Z0-9_]+)\}|<([a-zA-Z0-9_:]+)>|:([a-zA-Z0-9_]+)')
+# Matches path parameter variations: {id}, {user_id}, <id>, <int:user_id>, :id, {product_id}
+PATH_PARAM_REGEX = re.compile(r'\{([a-zA-Z0-9_.]+)\}|<([a-zA-Z0-9_.:]+)>|:([a-zA-Z0-9_]+)')
+
+# Matches base URL expressions, variables, schemes, and host prefixes:
+# e.g.: /{self.url}, {self.url}, {self.base_url}, {self.client.url}, {BASE_URL}, {server_url}, etc.
+BASE_VAR_REGEX = re.compile(
+    r'^/?(?:'
+    r'\{[^{}]*(?:base|url|server|host|domain|endpoint|root|api_url|api_prefix|service)[^{}]*\}'
+    r'|\{[a-zA-Z0-9_.]*(?:self|client|config|settings|service|env|cls)[a-zA-Z0-9_.]*\}'
+    r'|\$[a-zA-Z0-9_]+'
+    r'|\b(?:https?://[^/]+)'
+    r')',
+    flags=re.IGNORECASE
+)
 
 def normalize_method(method: Optional[str]) -> str:
     if not method:
@@ -19,16 +31,17 @@ def extract_path_params(url_path: str) -> List[str]:
     for match in PATH_PARAM_REGEX.finditer(url_path):
         name = match.group(1) or match.group(2) or match.group(3)
         if name:
-            if ":" in name:  # e.g. int:user_id
+            if ":" in name:
                 name = name.split(":")[-1]
             params.append(name)
     return params
 
 def strip_api_version_prefix(path: str) -> str:
-    """Strip common API version prefixes like /api/v1, /api/v2, /v1, /v2, /api."""
-    p = re.sub(r'^/api/v\d+', '', path, flags=re.IGNORECASE)
-    p = re.sub(r'^/v\d+', '', p, flags=re.IGNORECASE)
+    """Strip common API version prefixes like /api/v1, /api/v2, /v1, /v2, /api, /services."""
+    p = re.sub(r'^/api/v\d+(\.\d+)?', '', path, flags=re.IGNORECASE)
+    p = re.sub(r'^/v\d+(\.\d+)?', '', p, flags=re.IGNORECASE)
     p = re.sub(r'^/api', '', p, flags=re.IGNORECASE)
+    p = re.sub(r'^/services?', '', p, flags=re.IGNORECASE)
     if not p.startswith("/"):
         p = "/" + p
     return p
@@ -36,21 +49,26 @@ def strip_api_version_prefix(path: str) -> str:
 def normalize_endpoint(raw_url: str) -> Tuple[str, List[str], List[str]]:
     """
     Normalizes an endpoint URL.
+    Handles variables like /{self.url}/..., {BASE_URL}/..., and f-string templates.
     Returns:
       (canonical_path, path_params, query_params)
     """
     if not raw_url:
         return "/", [], []
 
-    url = raw_url.strip().strip('"\'`')
+    url = raw_url.strip()
+    # Strip quotes and f-string prefix: f"...", '...', "..."
+    url = re.sub(r'^[fF]?["\'`]+|["\'`]+$', '', url)
 
-    # Remove template string expressions like {BASE_URL}, {base_url}, {server_url}, $BASE_URL
-    url = re.sub(r'^\{[a-zA-Z0-9_]*base[a-zA-Z0-9_]*\}', '', url, flags=re.IGNORECASE)
-    url = re.sub(r'^\{[a-zA-Z0-9_]*server[a-zA-Z0-9_]*\}', '', url, flags=re.IGNORECASE)
-    url = re.sub(r'^\{[a-zA-Z0-9_]*url[a-zA-Z0-9_]*\}', '', url, flags=re.IGNORECASE)
-    url = re.sub(r'^\$[a-zA-Z0-9_]+', '', url)
+    # Iteratively strip base URL variables and host schemes from the beginning
+    while True:
+        m = BASE_VAR_REGEX.search(url)
+        if m:
+            url = url[m.end():]
+        else:
+            break
 
-    # If full URL with scheme (e.g. https://domain.com/path)
+    # If full URL with scheme
     if "://" in url:
         parsed = urlparse(url)
         path = parsed.path
@@ -96,8 +114,26 @@ def normalize_endpoint(raw_url: str) -> Tuple[str, List[str], List[str]]:
 
 def endpoints_match(ep1: str, ep2: str) -> bool:
     """
-    Check if two endpoints match.
+    Check if two endpoints match, with support for:
+    - Base URL stripping (e.g. /{self.url}/products/...)
+    - API version prefix differences (/api/v1/products/... vs /products/...)
+    - Segment alignment / suffix matching (/catalog/products/... vs /products/...)
     """
     norm1, _, _ = normalize_endpoint(ep1)
     norm2, _, _ = normalize_endpoint(ep2)
-    return norm1 == norm2
+
+    if norm1 == norm2:
+        return True
+
+    # Suffix alignment
+    seg1 = [s for s in norm1.split("/") if s]
+    seg2 = [s for s in norm2.split("/") if s]
+
+    if len(seg1) >= 2 and len(seg2) >= 2:
+        # Check if shorter endpoint is a suffix of longer endpoint
+        if len(seg1) > len(seg2) and seg1[-len(seg2):] == seg2:
+            return True
+        if len(seg2) > len(seg1) and seg2[-len(seg1):] == seg1:
+            return True
+
+    return False
