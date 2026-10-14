@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rapport d'Analyse de Correspondance Microservices</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #121826;
+            --bg-card: rgba(22, 30, 49, 0.7);
+            --bg-card-hover: rgba(28, 38, 62, 0.9);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(99, 102, 241, 0.3);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-primary: #6366f1;
+            --accent-primary-hover: #4f46e5;
+            --accent-glow: rgba(99, 102, 241, 0.2);
+            --method-get: #10b981;
+            --method-post: #6366f1;
+            --method-put: #f59e0b;
+            --method-delete: #ef4444;
+            --method-patch: #8b5cf6;
+            --status-matched: #10b981;
+            --status-divergent: #f59e0b;
+            --status-orphan: #ef4444;
+            --status-identical: #06b6d4;
+            --font-main: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: radial-gradient(circle at top right, #1e1b4b 0%, var(--bg-primary) 50%);
+            color: var(--text-primary);
+            font-family: var(--font-main);
+            min-height: 100vh;
+            padding: 32px 24px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo-title h1 {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #a5b4fc, #6366f1, #38bdf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 6px;
+        }
+
+        .logo-title p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            transition: all 0.2s ease;
+        }
+
+        .stat-card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filters-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 16px 20px;
+            margin-bottom: 24px;
+        }
+
+        .search-box input {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 10px 16px;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-main);
+            font-size: 14px;
+            width: 320px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-box input:focus {
+            border-color: var(--accent-primary);
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn.active, .filter-btn:hover {
+            background: var(--accent-primary);
+            color: white;
+            border-color: var(--accent-primary);
+        }
+
+        .matrix-table-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            backdrop-filter: blur(12px);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            text-align: left;
+        }
+
+        th {
+            background: rgba(18, 24, 38, 0.85);
+            padding: 16px 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+
+        tr:hover td {
+            background: var(--bg-card-hover);
+        }
+
+        .badge-method {
+            display: inline-block;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 6px;
+            text-align: center;
+            min-width: 55px;
+        }
+
+        .badge-method.GET { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-method.POST { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+        .badge-method.PUT { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .badge-method.DELETE { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-method.PATCH { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3); }
+
+        .endpoint-path {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 500;
+            color: #e2e8f0;
+            margin-left: 10px;
+        }
+
+        .func-box {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .func-name {
+            font-family: var(--font-mono);
+            font-weight: 600;
+            color: #a5b4fc;
+            font-size: 13px;
+        }
+
+        .func-loc {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-pill.MATCHED { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .status-pill.DIVERGENT { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .status-pill.IDENTICAL { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); }
+        .status-pill.MANUAL_ONLY { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .status-pill.AUTOGEN_ONLY { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+
+        .btn-view {
+            background: rgba(99, 102, 241, 0.15);
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-view:hover {
+            background: var(--accent-primary);
+            color: white;
+        }
+
+        /* Modal Dialog */
+        dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: var(--radius-lg);
+            padding: 0;
+            max-width: 900px;
+            width: 90vw;
+            max-height: 85vh;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            outline: none;
+            overflow: hidden;
+        }
+
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(6px);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(18, 24, 38, 0.95);
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .btn-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 24px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .modal-body {
+            padding: 24px;
+            overflow-y: auto;
+            max-height: calc(85vh - 80px);
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .diff-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .code-block {
+            background: #090d16;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            color: #cbd5e1;
+            line-height: 1.4;
+        }
+
+        .diff-param-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            margin-bottom: 8px;
+            border-left: 4px solid #64748b;
+        }
+
+        .diff-param-row.identical { border-left-color: #10b981; }
+        .diff-param-row.type_mismatch { border-left-color: #f59e0b; }
+        .diff-param-row.default_mismatch { border-left-color: #38bdf8; }
+        .diff-param-row.renamed_candidate { border-left-color: #8b5cf6; }
+        .diff-param-row.manual_only { border-left-color: #ef4444; }
+        .diff-param-row.autogen_only { border-left-color: #ec4899; }
+
+        .diff-param-name {
+            font-family: var(--font-mono);
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .diff-param-detail {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-title">
+                <h1>Matrice de Correspondance des Microservices</h1>
+                <p>Comparaison des endpoints et analyse différentielle des paramètres d'appels</p>
+            </div>
+            <div style="font-size: 13px; color: var(--text-muted);">
+                Rapport généré automatiquement
+            </div>
+        </header>
+
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-total" style="color: #6366f1;">9</div>
+                <div class="stat-label">Total Endpoints Détectés</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-matched" style="color: #10b981;">7</div>
+                <div class="stat-label">Correspondances Trouvées</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-divergent" style="color: #f59e0b;">1</div>
+                <div class="stat-label">Paramètres Divergents</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-identical" style="color: #06b6d4;">0</div>
+                <div class="stat-label">Paramètres 100% Identiques</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-orphans" style="color: #ef4444;">2</div>
+                <div class="stat-label">Endpoints Sans Correspondance</div>
+            </div>
+        </section>
+
+        <div class="filters-toolbar">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Rechercher un endpoint, une fonction, un paramètre..." oninput="filterTable()">
+            </div>
+            <div class="filter-buttons">
+                <button class="filter-btn active" onclick="setFilter('ALL', this)">Tous</button>
+                <button class="filter-btn" onclick="setFilter('MATCHED', this)">Correspondances (7)</button>
+                <button class="filter-btn" onclick="setFilter('DIVERGENT', this)">Paramètres Divergents (1)</button>
+                <button class="filter-btn" onclick="setFilter('IDENTICAL', this)">Identiques (0)</button>
+                <button class="filter-btn" onclick="setFilter('MANUAL_ONLY', this)">Manuel Seul (1)</button>
+                <button class="filter-btn" onclick="setFilter('AUTOGEN_ONLY', this)">Autogénéré Seul (1)</button>
+            </div>
+        </div>
+
+        <div class="matrix-table-container">
+            <table id="matrixTable">
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">Endpoint & Méthode</th>
+                        <th style="width: 25%;">Microservice Manuel</th>
+                        <th style="width: 25%;">Microservice Autogénéré</th>
+                        <th style="width: 15%;">Statut Correspondance</th>
+                        <th style="width: 10%; text-align: center;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="matrixBody">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal Dialog for Parameter Diff -->
+    <dialog id="diffModal">
+        <div class="modal-header">
+            <div class="modal-title" id="modalTitle">Détail des paramètres</div>
+            <button class="btn-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modalContent">
+            <!-- Populated on click -->
+        </div>
+    </dialog>
+
+    <script>
+        const reportData = {"manual_service_path": "samples/manual_service", "autogen_service_path": "samples/autogen_service", "manual_endpoints_count": 8, "autogen_endpoints_count": 8, "matched_count": 7, "manual_only_count": 1, "autogen_only_count": 1, "divergent_count": 1, "identical_count": 0, "compatible_count": 6, "matches": [{"id": "match_1", "http_method": "GET", "normalized_endpoint": "/users/{PARAM}", "raw_endpoint_manual": "https://internal-api.service.local/api/v1/users/{user_id}", "raw_endpoint_autogen": "/users/{id}", "status": "MATCHED", "param_status": "COMPATIBLE", "manual_call": {"function_name": "get_user_profile", "file_path": "service.py", "line_number": 16, "end_line_number": 21, "kind": "client_call", "http_method": "GET", "raw_endpoint": "https://internal-api.service.local/api/v1/users/{user_id}", "normalized_endpoint": "/users/{PARAM}", "function_params": [{"name": "user_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "include_billing", "type_annotation": "bool", "default_value": "False", "required": false, "kind": "arg", "description": null}], "path_params": ["user_id"], "query_params": ["include_billing"], "body_params": [], "headers": [], "code_snippet": "    def get_user_profile(self, user_id: int, include_billing: bool = False) -> Dict[str, Any]:\n        \"\"\"Fetch user profile with optional billing details.\"\"\"\n        url = f\"{BASE_URL}/users/{user_id}\"\n        params = {\"include_billing\": include_billing}\n        response = requests.get(url, headers=self.headers, params=params)\n        return response.json()", "docstring": "Fetch user profile with optional billing details."}, "autogen_call": {"function_name": "get_user_by_id", "file_path": "service.py", "line_number": 17, "end_line_number": 23, "kind": "client_call", "http_method": "GET", "raw_endpoint": "/users/{id}", "normalized_endpoint": "/users/{PARAM}", "function_params": [{"name": "id", "type_annotation": "str", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "expand", "type_annotation": "Optional[List[str]]", "default_value": "None", "required": false, "kind": "arg", "description": null}], "path_params": ["id"], "query_params": [], "body_params": [], "headers": [], "code_snippet": "    def get_user_by_id(self, id: str, expand: Optional[List[str]] = None) -> Dict[str, Any]:\n        \"\"\"Auto-generated operation: getUserById\"\"\"\n        params = {}\n        if expand:\n            params[\"expand\"] = \",\".join(expand)\n        response = self._client.request(\"GET\", f\"/users/{id}\", params=params)\n        return response.json()", "docstring": "Auto-generated operation: getUserById"}, "param_diffs": [{"name": "user_id ➔ id", "status": "renamed_candidate", "manual_param": {"name": "user_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, "autogen_param": {"name": "id", "type_annotation": "str", "default_value": null, "required": true, "kind": "arg", "description": null}, "details": "Renommé (user_id dans manuel, id dans autogénéré). Différence de type: 'int' vs 'str'"}, {"name": "include_billing", "status": "manual_only", "manual_param": {"name": "include_billing", "type_annotation": "bool", "default_value": "False", "required": false, "kind": "arg", "description": null}, "autogen_param": null, "details": "Uniquement dans le code manuel (Optionnel)"}, {"name": "expand", "status": "autogen_only", "manual_param": null, "autogen_param": {"name": "expand", "type_annotation": "Optional[List[str]]", "default_value": "None", "required": false, "kind": "arg", "description": null}, "details": "Uniquement dans le code autogénéré (Optionnel)"}], "summary": "3 différence(s) de paramètre(s)"}, {"id": "match_2", "http_method": "POST", "normalized_endpoint": "/orders", "raw_endpoint_manual": "https://internal-api.service.local/api/v1/orders", "raw_endpoint_autogen": "/orders", "status": "MATCHED", "param_status": "COMPATIBLE", "manual_call": {"function_name": "create_order", "file_path": "service.py", "line_number": 23, "end_line_number": 32, "kind": "client_call", "http_method": "POST", "raw_endpoint": "https://internal-api.service.local/api/v1/orders", "normalized_endpoint": "/orders", "function_params": [{"name": "customer_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "items", "type_annotation": "List[Dict[str, Any]]", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "discount_code", "type_annotation": "Optional[str]", "default_value": "None", "required": false, "kind": "arg", "description": null}], "path_params": [], "query_params": [], "body_params": ["customer_id", "items", "discount_code"], "headers": [], "code_snippet": "    def create_order(self, customer_id: int, items: List[Dict[str, Any]], discount_code: Optional[str] = None) -> Dict[str, Any]:\n        \"\"\"Place a customer order with items and optional promo code.\"\"\"\n        url = f\"{BASE_URL}/orders\"\n        payload = {\n            \"customer_id\": customer_id,\n            \"items\": items,\n            \"discount_code\": discount_code\n        }\n        response = requests.post(url, headers=self.headers, json=payload)\n        return response.json()", "docstring": "Place a customer order with items and optional promo code."}, "autogen_call": {"function_name": "post_orders", "file_path": "service.py", "line_number": 25, "end_line_number": 34, "kind": "client_call", "http_method": "POST", "raw_endpoint": "/orders", "normalized_endpoint": "/orders", "function_params": [{"name": "customer_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "items", "type_annotation": "List[Dict[str, Any]]", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "voucher", "type_annotation": "Optional[str]", "default_value": "None", "required": false, "kind": "arg", "description": null}, {"name": "currency", "type_annotation": "str", "default_value": "'EUR'", "required": false, "kind": "arg", "description": null}], "path_params": [], "query_params": [], "body_params": ["customer_id", "items", "voucher", "currency"], "headers": [], "code_snippet": "    def post_orders(self, customer_id: int, items: List[Dict[str, Any]], voucher: Optional[str] = None, currency: str = \"EUR\") -> Dict[str, Any]:\n        \"\"\"Auto-generated operation: postOrders\"\"\"\n        payload = {\n            \"customer_id\": customer_id,\n            \"items\": items,\n            \"voucher\": voucher,\n            \"currency\": currency\n        }\n        response = self._client.request(\"POST\", \"/orders\", json=payload)\n        return response.json()", "docstring": "Auto-generated operation: postOrders"}, "param_diffs": [{"name": "customer_id", "status": "identical", "manual_param": {"name": "customer_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, "autogen_param": {"name": "customer_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, "details": "Paramètre identique (int)"}, {"name": "items", "status": "identical", "manual_param": {"name": "items", "type_annotation": "List[Dict[str, Any]]", "default_value": null, "required": true, "kind": "arg", "description": null}, "autogen_param": {"name": "items", "type_annotation": "List[Dict[str, Any]]", "default_value": null, "required": true, "kind": "arg", "description": null}, "details": "Paramètre identique (List[Dict[str, Any]])"}, {"name": "discount_code", "status": "manual_only", "manual_param": {"name": "discount_code", "type_annotation": "Optional[str]", "default_value": "None", "required": false, "kind": "arg", "description": null}, "autogen_param": null, "details": "Uniquement dans le code manuel (Optionnel)"}, {"name": "voucher", "status": "autogen_only", "manual_param": null, "autogen_param": {"name": "voucher", "type_annotation": "Optional[str]", "default_value": "None", "required": false, "kind": "arg", "description": null}, "details": "Uniquement dans le code autogénéré (Optionnel)"}, {"name": "currency", "status": "autogen_only", "manual_param": null, "autogen_param": {"name": "currency", "type_annotation": "str", "default_value": "'EUR'", "required": false, "kind": "arg", "description": null}, "details": "Uniquement dans le code autogénéré (Optionnel)"}], "summary": "3 différence(s) de paramètre(s)"}, {"id": "match_3", "http_method": "PUT", "normalized_endpoint": "/inventory/{PARAM}", "raw_endpoint_manual": "https://internal-api.service.local/api/v1/inventory/{product_id}", "raw_endpoint_autogen": "/inventory/{product_id}", "status": "MATCHED", "param_status": "COMPATIBLE", "manual_call": {"function_name": "update_inventory_stock", "file_path": "service.py", "line_number": 34, "end_line_number": 39, "kind": "client_call", "http_method": "PUT", "raw_endpoint": "https://internal-api.service.local/api/v1/inventory/{product_id}", "normalized_endpoint": "/inventory/{PARAM}", "function_params": [{"name": "product_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "quantity", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "reason", "type_annotation": "str", "default_value": "'restock'", "required": false, "kind": "arg", "description": null}], "path_params": ["product_id"], "query_params": [], "body_params": ["quantity", "reason"], "headers": [], "code_snippet": "    def update_inventory_stock(self, product_id: int, quantity: int, reason: str = \"restock\") -> Dict[str, Any]:\n        \"\"\"Update inventory stock count with tracking reason.\"\"\"\n        url = f\"{BASE_URL}/inventory/{product_id}\"\n        payload = {\"quantity\": quantity, \"reason\": reason}\n        response = requests.put(url, headers=self.headers, json=payload)\n        return response.json()", "docstring": "Update inventory stock count with tracking reason."}, "autogen_call": {"function_name": "put_inventory", "file_path": "service.py", "line_number": 36, "end_line_number": 39, "kind": "client_call", "http_method": "PUT", "raw_endpoint": "/inventory/{product_id}", "normalized_endpoint": "/inventory/{PARAM}", "function_params": [{"name": "product_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "qty", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}], "path_params": ["product_id"], "query_params": [], "body_params": ["qty"], "headers": [], "code_snippet": "    def put_inventory(self, product_id: int, qty: int) -> Dict[str, Any]:\n        \"\"\"Auto-generated operation: putInventory\"\"\"\n        response = self._client.request(\"PUT\", f\"/inventory/{product_id}\", json={\"qty\": qty})\n        return response.json()", "docstring": "Auto-generated operation: putInventory"}, "param_diffs": [{"name": "product_id", "status": "identical", "manual_param": {"name": "product_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, "autogen_param": {"name": "product_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, "details": "Paramètre identique (int)"}, {"name": "quantity ➔ qty", "status": "renamed_candidate", "manual_param": {"name": "quantity", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, "autogen_param": {"name": "qty", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, "details": "Renommé (quantity dans manuel, qty dans autogénéré). Identique (int)"}, {"name": "reason", "status": "manual_only", "manual_param": {"name": "reason", "type_annotation": "str", "default_value": "'restock'", "required": false, "kind": "arg", "description": null}, "autogen_param": null, "details": "Uniquement dans le code manuel (Optionnel)"}], "summary": "2 différence(s) de paramètre(s)"}, {"id": "match_4", "http_method": "DELETE", "normalized_endpoint": "/users/{PARAM}", "raw_endpoint_manual": "https://internal-api.service.local/api/v1/users/{user_id}", "raw_endpoint_autogen": "/users/{id}", "status": "MATCHED", "param_status": "COMPATIBLE", "manual_call": {"function_name": "delete_user_account", "file_path": "service.py", "line_number": 41, "end_line_number": 46, "kind": "client_call", "http_method": "DELETE", "raw_endpoint": "https://internal-api.service.local/api/v1/users/{user_id}", "normalized_endpoint": "/users/{PARAM}", "function_params": [{"name": "user_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "purge_data", "type_annotation": "bool", "default_value": "True", "required": false, "kind": "arg", "description": null}], "path_params": ["user_id"], "query_params": ["purge_data"], "body_params": [], "headers": [], "code_snippet": "    def delete_user_account(self, user_id: int, purge_data: bool = True) -> bool:\n        \"\"\"Delete user account and optionally purge GDPR records.\"\"\"\n        url = f\"{BASE_URL}/users/{user_id}\"\n        params = {\"purge_data\": purge_data}\n        response = requests.delete(url, headers=self.headers, params=params)\n        return response.status_code == 204", "docstring": "Delete user account and optionally purge GDPR records."}, "autogen_call": {"function_name": "delete_user", "file_path": "service.py", "line_number": 41, "end_line_number": 44, "kind": "client_call", "http_method": "DELETE", "raw_endpoint": "/users/{id}", "normalized_endpoint": "/users/{PARAM}", "function_params": [{"name": "id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}], "path_params": ["id"], "query_params": [], "body_params": [], "headers": [], "code_snippet": "    def delete_user(self, id: int) -> bool:\n        \"\"\"Auto-generated operation: deleteUser\"\"\"\n        response = self._client.request(\"DELETE\", f\"/users/{id}\")\n        return response.status_code == 204", "docstring": "Auto-generated operation: deleteUser"}, "param_diffs": [{"name": "user_id ➔ id", "status": "renamed_candidate", "manual_param": {"name": "user_id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, "autogen_param": {"name": "id", "type_annotation": "int", "default_value": null, "required": true, "kind": "arg", "description": null}, "details": "Renommé (user_id dans manuel, id dans autogénéré). Identique (int)"}, {"name": "purge_data", "status": "manual_only", "manual_param": {"name": "purge_data", "type_annotation": "bool", "default_value": "True", "required": false, "kind": "arg", "description": null}, "autogen_param": null, "details": "Uniquement dans le code manuel (Optionnel)"}], "summary": "2 différence(s) de paramètre(s)"}, {"id": "match_5", "http_method": "GET", "normalized_endpoint": "/catalog/search", "raw_endpoint_manual": "https://internal-api.service.local/api/v1/catalog/search", "raw_endpoint_autogen": "/catalog/search", "status": "MATCHED", "param_status": "COMPATIBLE", "manual_call": {"function_name": "search_catalog", "file_path": "service.py", "line_number": 48, "end_line_number": 53, "kind": "client_call", "http_method": "GET", "raw_endpoint": "https://internal-api.service.local/api/v1/catalog/search", "normalized_endpoint": "/catalog/search", "function_params": [{"name": "query", "type_annotation": "str", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "page", "type_annotation": "int", "default_value": "1", "required": false, "kind": "arg", "description": null}, {"name": "page_size", "type_annotation": "int", "default_value": "20", "required": false, "kind": "arg", "description": null}], "path_params": [], "query_params": ["query", "page", "page_size"], "body_params": [], "headers": [], "code_snippet": "    def search_catalog(self, query: str, page: int = 1, page_size: int = 20) -> List[Dict[str, Any]]:\n        \"\"\"Search products catalog with pagination.\"\"\"\n        url = f\"{BASE_URL}/catalog/search\"\n        params = {\"query\": query, \"page\": page, \"page_size\": page_size}\n        response = requests.get(url, headers=self.headers, params=params)\n        return response.json()", "docstring": "Search products catalog with pagination."}, "autogen_call": {"function_name": "get_catalog_search", "file_path": "service.py", "line_number": 46, "end_line_number": 50, "kind": "client_call", "http_method": "GET", "raw_endpoint": "/catalog/search", "normalized_endpoint": "/catalog/search", "function_params": [{"name": "q", "type_annotation": "str", "default_value": null, "required": true, "kind": "arg", "description": null}, {"name": "limit", "type_annotation": "int", "default_value": "25", "required": false, "kind": "arg", "description": null}, {"name": "offset", "type_annotation": "int", "default_value": "0", "required": false, "kind": "arg", "description": null}], "path_params": [], "query_params": ["q", "limit", "offset"], "body_params": [], "headers": [], "code_snippet": "    def get_catalog_search(self, q: str, limit: int = 25, offset: int = 0) -> List[Dict[str, Any]]:\n        \"\"\"Auto-generated operation: getCatalogSearch\"\"\"\n        params = {\"q\": q, \"limit\": limit, \"offset\": offset}\n        response = self._client.request(\"GET\", \"/catalog/search\", params=params)\n        return response.json()", "docstring": "Auto-generated operation: getCatalogSearch"}, "param_diffs": [{"name": "query ➔ q", "status": "renamed_candidate", "manual_param": {"name": "query", "type_annotation": "str", "default_value": null, "required": true, "kind": "arg", "description": null}, "autogen_param": {"name": "q", "type_annotation": "str", "default_value": null, "required": true, "kind": "arg", "description": null}, "details": "Renommé (query dans manuel, q dans autogénéré). Identique (str)"}, {"name": "page ➔ offset", "status": "renamed_candidate", "manual_param": {"name": "page", "type_annotation": "int", "default_value": "1", "required": false, "kind": "arg", "description": null}, "autogen_param": {"name": "offset", "type_annotation": "int", "default_value": "0", "required": false, "kind": "arg", "description": null}, "details": "Renommé (page dans manuel, offset dans autogénéré). Identique (int)"}, {"name": "page_size ➔ limit", "status": "renamed_candidate", "manual_param": {"name": "page_size", "type_annotation": "int", "default_value": "20", "required": false, "kind": "arg", "description": null}, "autogen_param": {"name": "limit", "type_annotation": "int", "default_value": "25", "required": false, "kind": "arg", "description": null}, "details": "Renommé (page_size dans manuel, limit dans autogénéré). Identique (int)"}], "summary": "3 différence(s) de paramètre(s)"}, {"id": "match_6", "http_method": "GET", "normalized_endpoint": "/health", "raw_endpoint_manual": "https://internal-api.service.local/api/v1/health", "raw_endpoint_autogen": null, "status": "MANUAL_ONLY", "param_status": "N/A", "manual_call": {"function_name": "legacy_ping", "file_path": "service.py", "line_number": 55, "end_line_number": 59, "kind": "client_call", "http_method": "GET", "raw_endpoint": "https://internal-api.service.local/api/v1/health", "normalized_endpoint": "/health", "function_params": [], "path_params": [], "query_params": [], "body_params": [], "headers": [], "code_snippet": "    def legacy_ping(self) -> Dict[str, str]:\n        \"\"\"Old healthcheck endpoint - only in manual microservice.\"\"\"\n        url = f\"{BASE_URL}/health\"\n        response = requests.get(url, headers=self.headers)\n        return response.json()", "docstring": "Old healthcheck endpoint - only in manual microservice."}, "autogen_call": null, "param_diffs": [], "summary": "Endpoint présent uniquement dans le microservice manuel"}, {"id": "match_7", "http_method": "GET", "normalized_endpoint": "/payments/{PARAM}", "raw_endpoint_manual": "/api/v1/payments/{payment_id}", "raw_endpoint_autogen": "/payments/{id}", "status": "MATCHED", "param_status": "COMPATIBLE", "manual_call": {"function_name": "get_payment", "file_path": "service.py", "line_number": 64, "end_line_number": 66, "kind": "server_route", "http_method": "GET", "raw_endpoint": "/api/v1/payments/{payment_id}", "normalized_endpoint": "/payments/{PARAM}", "function_params": [{"name": "payment_id", "type_annotation": "str", "default_value": null, "required": true, "kind": "path", "description": null}, {"name": "detailed", "type_annotation": "bool", "default_value": "False", "required": false, "kind": "query", "description": null}], "path_params": ["payment_id"], "query_params": ["detailed"], "body_params": [], "headers": [], "code_snippet": "def get_payment(payment_id: str, detailed: bool = False) -> Dict[str, Any]:\n    \"\"\"Retrieve payment details.\"\"\"\n    return {\"payment_id\": payment_id, \"detailed\": detailed, \"status\": \"completed\"}", "docstring": "Retrieve payment details."}, "autogen_call": {"function_name": "retrieve_payment", "file_path": "service.py", "line_number": 60, "end_line_number": 62, "kind": "server_route", "http_method": "GET", "raw_endpoint": "/payments/{id}", "normalized_endpoint": "/payments/{PARAM}", "function_params": [{"name": "id", "type_annotation": "str", "default_value": null, "required": true, "kind": "path", "description": null}, {"name": "include_meta", "type_annotation": "Optional[bool]", "default_value": "None", "required": false, "kind": "query", "description": null}], "path_params": ["id"], "query_params": ["include_meta"], "body_params": [], "headers": [], "code_snippet": "def retrieve_payment(id: str, include_meta: Optional[bool] = None) -> Dict[str, Any]:\n    \"\"\"Auto-generated route handler for payment retrieval.\"\"\"\n    return {\"id\": id, \"include_meta\": include_meta}", "docstring": "Auto-generated route handler for payment retrieval."}, "param_diffs": [{"name": "payment_id ➔ id", "status": "renamed_candidate", "manual_param": {"name": "payment_id", "type_annotation": "str", "default_value": null, "required": true, "kind": "path", "description": null}, "autogen_param": {"name": "id", "type_annotation": "str", "default_value": null, "required": true, "kind": "path", "description": null}, "details": "Renommé (payment_id dans manuel, id dans autogénéré). Identique (str)"}, {"name": "detailed", "status": "manual_only", "manual_param": {"name": "detailed", "type_annotation": "bool", "default_value": "False", "required": false, "kind": "query", "description": null}, "autogen_param": null, "details": "Uniquement dans le code manuel (Optionnel)"}, {"name": "include_meta", "status": "autogen_only", "manual_param": null, "autogen_param": {"name": "include_meta", "type_annotation": "Optional[bool]", "default_value": "None", "required": false, "kind": "query", "description": null}, "details": "Uniquement dans le code autogénéré (Optionnel)"}], "summary": "3 différence(s) de paramètre(s)"}, {"id": "match_8", "http_method": "POST", "normalized_endpoint": "/webhooks/stripe", "raw_endpoint_manual": "/api/v1/webhooks/stripe", "raw_endpoint_autogen": "/webhooks/stripe", "status": "MATCHED", "param_status": "DIVERGENT", "manual_call": {"function_name": "handle_stripe_webhook", "file_path": "service.py", "line_number": 70, "end_line_number": 72, "kind": "server_route", "http_method": "POST", "raw_endpoint": "/api/v1/webhooks/stripe", "normalized_endpoint": "/webhooks/stripe", "function_params": [{"name": "event_type", "type_annotation": "str", "default_value": null, "required": true, "kind": "query", "description": null}, {"name": "payload", "type_annotation": "Dict[str, Any]", "default_value": null, "required": true, "kind": "query", "description": null}], "path_params": [], "query_params": ["event_type", "payload"], "body_params": [], "headers": [], "code_snippet": "def handle_stripe_webhook(event_type: str, payload: Dict[str, Any]) -> Dict[str, str]:\n    \"\"\"Process incoming stripe payment webhook.\"\"\"\n    return {\"status\": \"accepted\", \"event\": event_type}", "docstring": "Process incoming stripe payment webhook."}, "autogen_call": {"function_name": "process_stripe_event", "file_path": "service.py", "line_number": 66, "end_line_number": 68, "kind": "server_route", "http_method": "POST", "raw_endpoint": "/webhooks/stripe", "normalized_endpoint": "/webhooks/stripe", "function_params": [{"name": "payload", "type_annotation": "Dict[str, Any]", "default_value": null, "required": true, "kind": "query", "description": null}], "path_params": [], "query_params": ["payload"], "body_params": [], "headers": [], "code_snippet": "def process_stripe_event(payload: Dict[str, Any]) -> Dict[str, str]:\n    \"\"\"Auto-generated webhook handler.\"\"\"\n    return {\"received\": True}", "docstring": "Auto-generated webhook handler."}, "param_diffs": [{"name": "event_type", "status": "manual_only", "manual_param": {"name": "event_type", "type_annotation": "str", "default_value": null, "required": true, "kind": "query", "description": null}, "autogen_param": null, "details": "Uniquement dans le code manuel (Requis)"}, {"name": "payload", "status": "identical", "manual_param": {"name": "payload", "type_annotation": "Dict[str, Any]", "default_value": null, "required": true, "kind": "query", "description": null}, "autogen_param": {"name": "payload", "type_annotation": "Dict[str, Any]", "default_value": null, "required": true, "kind": "query", "description": null}, "details": "Paramètre identique (Dict[str, Any])"}], "summary": "1 différence(s) de paramètre(s)"}, {"id": "match_9", "http_method": "GET", "normalized_endpoint": "/audit/logs", "raw_endpoint_manual": null, "raw_endpoint_autogen": "/audit/logs", "status": "AUTOGEN_ONLY", "param_status": "N/A", "manual_call": null, "autogen_call": {"function_name": "get_audit_logs", "file_path": "service.py", "line_number": 52, "end_line_number": 55, "kind": "client_call", "http_method": "GET", "raw_endpoint": "/audit/logs", "normalized_endpoint": "/audit/logs", "function_params": [{"name": "start_date", "type_annotation": "str", "default_value": null, "required": true, "kind": "arg", "description": null}], "path_params": [], "query_params": ["start_date"], "body_params": [], "headers": [], "code_snippet": "    def get_audit_logs(self, start_date: str) -> List[Dict[str, Any]]:\n        \"\"\"Auto-generated operation: getAuditLogs - only in autogen microservice.\"\"\"\n        response = self._client.request(\"GET\", \"/audit/logs\", params={\"start_date\": start_date})\n        return response.json()", "docstring": "Auto-generated operation: getAuditLogs - only in autogen microservice."}, "param_diffs": [{"name": "start_date", "status": "autogen_only", "manual_param": null, "autogen_param": {"name": "start_date", "type_annotation": "str", "default_value": null, "required": true, "kind": "arg", "description": null}, "details": "Paramètre du code autogénéré (str)"}], "summary": "Endpoint présent uniquement dans le microservice autogénéré"}]};
+        let currentFilter = 'ALL';
+
+        function renderTable() {
+            const tbody = document.getElementById('matrixBody');
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            tbody.innerHTML = '';
+
+            const filtered = reportData.matches.filter(m => {
+                // Filter status
+                if (currentFilter === 'MATCHED' && m.status !== 'MATCHED') return false;
+                if (currentFilter === 'DIVERGENT' && !(m.status === 'MATCHED' && m.param_status === 'DIVERGENT')) return false;
+                if (currentFilter === 'IDENTICAL' && !(m.status === 'MATCHED' && m.param_status === 'IDENTICAL')) return false;
+                if (currentFilter === 'MANUAL_ONLY' && m.status !== 'MANUAL_ONLY') return false;
+                if (currentFilter === 'AUTOGEN_ONLY' && m.status !== 'AUTOGEN_ONLY') return false;
+
+                // Search query
+                if (search) {
+                    const mFunc = m.manual_call ? m.manual_call.function_name.toLowerCase() : '';
+                    const aFunc = m.autogen_call ? m.autogen_call.function_name.toLowerCase() : '';
+                    const ep = m.normalized_endpoint.toLowerCase();
+                    const rawM = m.raw_endpoint_manual ? m.raw_endpoint_manual.toLowerCase() : '';
+                    const rawA = m.raw_endpoint_autogen ? m.raw_endpoint_autogen.toLowerCase() : '';
+                    const diffs = m.param_diffs.map(d => d.name.toLowerCase()).join(' ');
+
+                    return mFunc.includes(search) || aFunc.includes(search) || ep.includes(search) || rawM.includes(search) || rawA.includes(search) || diffs.includes(search);
+                }
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color: var(--text-muted);">Aucun endpoint ne correspond aux critères de filtre.</td></tr>';
+                return;
+            }
+
+            filtered.forEach(m => {
+                const tr = document.createElement('tr');
+
+                // Endpoint column
+                let epHtml = `
+                    <div style="display: flex; align-items: center;">
+                        <span class="badge-method ${m.http_method}">${m.http_method}</span>
+                        <span class="endpoint-path" title="${m.normalized_endpoint}">${m.normalized_endpoint}</span>
+                    </div>
+                `;
+
+                // Manual call column
+                let manualHtml = '';
+                if (m.manual_call) {
+                    manualHtml = `
+                        <div class="func-box">
+                            <span class="func-name">${m.manual_call.function_name}()</span>
+                            <span class="func-loc">${m.manual_call.file_path}:${m.manual_call.line_number}</span>
+                        </div>
+                    `;
+                } else {
+                    manualHtml = '<span style="color: var(--text-muted); font-style: italic;">Non implémenté</span>';
+                }
+
+                // Autogen call column
+                let autogenHtml = '';
+                if (m.autogen_call) {
+                    autogenHtml = `
+                        <div class="func-box">
+                            <span class="func-name">${m.autogen_call.function_name}()</span>
+                            <span class="func-loc">${m.autogen_call.file_path}:${m.autogen_call.line_number}</span>
+                        </div>
+                    `;
+                } else {
+                    autogenHtml = '<span style="color: var(--text-muted); font-style: italic;">Non généré</span>';
+                }
+
+                // Status column
+                let statusHtml = '';
+                if (m.status === 'MATCHED') {
+                    if (m.param_status === 'IDENTICAL') {
+                        statusHtml = '<span class="status-pill IDENTICAL">✓ Identique</span>';
+                    } else if (m.param_status === 'COMPATIBLE') {
+                        statusHtml = '<span class="status-pill MATCHED">✓ Compatible</span>';
+                    } else {
+                        statusHtml = '<span class="status-pill DIVERGENT">⚠️ Divergent</span>';
+                    }
+                } else if (m.status === 'MANUAL_ONLY') {
+                    statusHtml = '<span class="status-pill MANUAL_ONLY">Manuel seul</span>';
+                } else {
+                    statusHtml = '<span class="status-pill AUTOGEN_ONLY">Autogénéré seul</span>';
+                }
+
+                // Action column
+                let actionHtml = `<button class="btn-view" onclick="openDiffModal('${m.id}')">Examiner</button>`;
+
+                tr.innerHTML = `
+                    <td>${epHtml}</td>
+                    <td>${manualHtml}</td>
+                    <td>${autogenHtml}</td>
+                    <td>${statusHtml}</td>
+                    <td style="text-align: center;">${actionHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function setFilter(filter, btn) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderTable();
+        }
+
+        function filterTable() {
+            renderTable();
+        }
+
+        function openDiffModal(matchId) {
+            const match = reportData.matches.find(m => m.id === matchId);
+            if (!match) return;
+
+            document.getElementById('modalTitle').innerHTML = `
+                <span class="badge-method ${match.http_method}">${match.http_method}</span>
+                <span style="margin-left: 8px;">${match.normalized_endpoint}</span>
+            `;
+
+            let diffListHtml = '';
+            match.param_diffs.forEach(d => {
+                diffListHtml += `
+                    <div class="diff-param-row ${d.status}">
+                        <div>
+                            <div class="diff-param-name">${d.name}</div>
+                            <div class="diff-param-detail">${d.details}</div>
+                        </div>
+                        <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-muted);">
+                            ${d.status.replace('_', ' ')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            const mCode = match.manual_call ? match.manual_call.code_snippet : 'Aucun code manuel disponible';
+            const aCode = match.autogen_call ? match.autogen_call.code_snippet : 'Aucun code autogénéré disponible';
+
+            document.getElementById('modalContent').innerHTML = `
+                <div>
+                    <h4 style="font-size: 14px; margin-bottom: 12px; color: #a5b4fc;">Différence détaillée des paramètres :</h4>
+                    ${diffListHtml || '<p style="color: var(--text-muted);">Aucun paramètre à comparer.</p>'}
+                </div>
+                <div>
+                    <h4 style="font-size: 14px; margin-bottom: 12px; color: #a5b4fc;">Code source comparé :</h4>
+                    <div class="diff-grid">
+                        <div>
+                            <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary);">
+                                Service Manuel: ${match.manual_call ? match.manual_call.file_path + ':' + match.manual_call.line_number : 'N/A'}
+                            </div>
+                            <pre class="code-block">${escapeHtml(mCode)}</pre>
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary);">
+                                Service Autogénéré: ${match.autogen_call ? match.autogen_call.file_path + ':' + match.autogen_call.line_number : 'N/A'}
+                            </div>
+                            <pre class="code-block">${escapeHtml(aCode)}</pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const modal = document.getElementById('diffModal');
+            modal.showModal();
+        }
+
+        function closeModal() {
+            document.getElementById('diffModal').close();
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
+        // Initial render
+        renderTable();
+    </script>
+</body>
+</html>

@@ -1,0 +1,1112 @@
+{
+  "manual_service_path": "samples/manual_service",
+  "autogen_service_path": "samples/autogen_service",
+  "manual_endpoints_count": 8,
+  "autogen_endpoints_count": 8,
+  "matched_count": 7,
+  "manual_only_count": 1,
+  "autogen_only_count": 1,
+  "divergent_count": 1,
+  "identical_count": 0,
+  "compatible_count": 6,
+  "matches": [
+    {
+      "id": "match_1",
+      "http_method": "GET",
+      "normalized_endpoint": "/users/{PARAM}",
+      "raw_endpoint_manual": "https://internal-api.service.local/api/v1/users/{user_id}",
+      "raw_endpoint_autogen": "/users/{id}",
+      "status": "MATCHED",
+      "param_status": "COMPATIBLE",
+      "manual_call": {
+        "function_name": "get_user_profile",
+        "file_path": "service.py",
+        "line_number": 16,
+        "end_line_number": 21,
+        "kind": "client_call",
+        "http_method": "GET",
+        "raw_endpoint": "https://internal-api.service.local/api/v1/users/{user_id}",
+        "normalized_endpoint": "/users/{PARAM}",
+        "function_params": [
+          {
+            "name": "user_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "include_billing",
+            "type_annotation": "bool",
+            "default_value": "False",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [
+          "user_id"
+        ],
+        "query_params": [
+          "include_billing"
+        ],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "    def get_user_profile(self, user_id: int, include_billing: bool = False) -> Dict[str, Any]:\n        \"\"\"Fetch user profile with optional billing details.\"\"\"\n        url = f\"{BASE_URL}/users/{user_id}\"\n        params = {\"include_billing\": include_billing}\n        response = requests.get(url, headers=self.headers, params=params)\n        return response.json()",
+        "docstring": "Fetch user profile with optional billing details."
+      },
+      "autogen_call": {
+        "function_name": "get_user_by_id",
+        "file_path": "service.py",
+        "line_number": 17,
+        "end_line_number": 23,
+        "kind": "client_call",
+        "http_method": "GET",
+        "raw_endpoint": "/users/{id}",
+        "normalized_endpoint": "/users/{PARAM}",
+        "function_params": [
+          {
+            "name": "id",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "expand",
+            "type_annotation": "Optional[List[str]]",
+            "default_value": "None",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [
+          "id"
+        ],
+        "query_params": [],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "    def get_user_by_id(self, id: str, expand: Optional[List[str]] = None) -> Dict[str, Any]:\n        \"\"\"Auto-generated operation: getUserById\"\"\"\n        params = {}\n        if expand:\n            params[\"expand\"] = \",\".join(expand)\n        response = self._client.request(\"GET\", f\"/users/{id}\", params=params)\n        return response.json()",
+        "docstring": "Auto-generated operation: getUserById"
+      },
+      "param_diffs": [
+        {
+          "name": "user_id ➔ id",
+          "status": "renamed_candidate",
+          "manual_param": {
+            "name": "user_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "id",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Renommé (user_id dans manuel, id dans autogénéré). Différence de type: 'int' vs 'str'"
+        },
+        {
+          "name": "include_billing",
+          "status": "manual_only",
+          "manual_param": {
+            "name": "include_billing",
+            "type_annotation": "bool",
+            "default_value": "False",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": null,
+          "details": "Uniquement dans le code manuel (Optionnel)"
+        },
+        {
+          "name": "expand",
+          "status": "autogen_only",
+          "manual_param": null,
+          "autogen_param": {
+            "name": "expand",
+            "type_annotation": "Optional[List[str]]",
+            "default_value": "None",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Uniquement dans le code autogénéré (Optionnel)"
+        }
+      ],
+      "summary": "3 différence(s) de paramètre(s)"
+    },
+    {
+      "id": "match_2",
+      "http_method": "POST",
+      "normalized_endpoint": "/orders",
+      "raw_endpoint_manual": "https://internal-api.service.local/api/v1/orders",
+      "raw_endpoint_autogen": "/orders",
+      "status": "MATCHED",
+      "param_status": "COMPATIBLE",
+      "manual_call": {
+        "function_name": "create_order",
+        "file_path": "service.py",
+        "line_number": 23,
+        "end_line_number": 32,
+        "kind": "client_call",
+        "http_method": "POST",
+        "raw_endpoint": "https://internal-api.service.local/api/v1/orders",
+        "normalized_endpoint": "/orders",
+        "function_params": [
+          {
+            "name": "customer_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "items",
+            "type_annotation": "List[Dict[str, Any]]",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "discount_code",
+            "type_annotation": "Optional[str]",
+            "default_value": "None",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [],
+        "query_params": [],
+        "body_params": [
+          "customer_id",
+          "items",
+          "discount_code"
+        ],
+        "headers": [],
+        "code_snippet": "    def create_order(self, customer_id: int, items: List[Dict[str, Any]], discount_code: Optional[str] = None) -> Dict[str, Any]:\n        \"\"\"Place a customer order with items and optional promo code.\"\"\"\n        url = f\"{BASE_URL}/orders\"\n        payload = {\n            \"customer_id\": customer_id,\n            \"items\": items,\n            \"discount_code\": discount_code\n        }\n        response = requests.post(url, headers=self.headers, json=payload)\n        return response.json()",
+        "docstring": "Place a customer order with items and optional promo code."
+      },
+      "autogen_call": {
+        "function_name": "post_orders",
+        "file_path": "service.py",
+        "line_number": 25,
+        "end_line_number": 34,
+        "kind": "client_call",
+        "http_method": "POST",
+        "raw_endpoint": "/orders",
+        "normalized_endpoint": "/orders",
+        "function_params": [
+          {
+            "name": "customer_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "items",
+            "type_annotation": "List[Dict[str, Any]]",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "voucher",
+            "type_annotation": "Optional[str]",
+            "default_value": "None",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "currency",
+            "type_annotation": "str",
+            "default_value": "'EUR'",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [],
+        "query_params": [],
+        "body_params": [
+          "customer_id",
+          "items",
+          "voucher",
+          "currency"
+        ],
+        "headers": [],
+        "code_snippet": "    def post_orders(self, customer_id: int, items: List[Dict[str, Any]], voucher: Optional[str] = None, currency: str = \"EUR\") -> Dict[str, Any]:\n        \"\"\"Auto-generated operation: postOrders\"\"\"\n        payload = {\n            \"customer_id\": customer_id,\n            \"items\": items,\n            \"voucher\": voucher,\n            \"currency\": currency\n        }\n        response = self._client.request(\"POST\", \"/orders\", json=payload)\n        return response.json()",
+        "docstring": "Auto-generated operation: postOrders"
+      },
+      "param_diffs": [
+        {
+          "name": "customer_id",
+          "status": "identical",
+          "manual_param": {
+            "name": "customer_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "customer_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Paramètre identique (int)"
+        },
+        {
+          "name": "items",
+          "status": "identical",
+          "manual_param": {
+            "name": "items",
+            "type_annotation": "List[Dict[str, Any]]",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "items",
+            "type_annotation": "List[Dict[str, Any]]",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Paramètre identique (List[Dict[str, Any]])"
+        },
+        {
+          "name": "discount_code",
+          "status": "manual_only",
+          "manual_param": {
+            "name": "discount_code",
+            "type_annotation": "Optional[str]",
+            "default_value": "None",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": null,
+          "details": "Uniquement dans le code manuel (Optionnel)"
+        },
+        {
+          "name": "voucher",
+          "status": "autogen_only",
+          "manual_param": null,
+          "autogen_param": {
+            "name": "voucher",
+            "type_annotation": "Optional[str]",
+            "default_value": "None",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Uniquement dans le code autogénéré (Optionnel)"
+        },
+        {
+          "name": "currency",
+          "status": "autogen_only",
+          "manual_param": null,
+          "autogen_param": {
+            "name": "currency",
+            "type_annotation": "str",
+            "default_value": "'EUR'",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Uniquement dans le code autogénéré (Optionnel)"
+        }
+      ],
+      "summary": "3 différence(s) de paramètre(s)"
+    },
+    {
+      "id": "match_3",
+      "http_method": "PUT",
+      "normalized_endpoint": "/inventory/{PARAM}",
+      "raw_endpoint_manual": "https://internal-api.service.local/api/v1/inventory/{product_id}",
+      "raw_endpoint_autogen": "/inventory/{product_id}",
+      "status": "MATCHED",
+      "param_status": "COMPATIBLE",
+      "manual_call": {
+        "function_name": "update_inventory_stock",
+        "file_path": "service.py",
+        "line_number": 34,
+        "end_line_number": 39,
+        "kind": "client_call",
+        "http_method": "PUT",
+        "raw_endpoint": "https://internal-api.service.local/api/v1/inventory/{product_id}",
+        "normalized_endpoint": "/inventory/{PARAM}",
+        "function_params": [
+          {
+            "name": "product_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "quantity",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "reason",
+            "type_annotation": "str",
+            "default_value": "'restock'",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [
+          "product_id"
+        ],
+        "query_params": [],
+        "body_params": [
+          "quantity",
+          "reason"
+        ],
+        "headers": [],
+        "code_snippet": "    def update_inventory_stock(self, product_id: int, quantity: int, reason: str = \"restock\") -> Dict[str, Any]:\n        \"\"\"Update inventory stock count with tracking reason.\"\"\"\n        url = f\"{BASE_URL}/inventory/{product_id}\"\n        payload = {\"quantity\": quantity, \"reason\": reason}\n        response = requests.put(url, headers=self.headers, json=payload)\n        return response.json()",
+        "docstring": "Update inventory stock count with tracking reason."
+      },
+      "autogen_call": {
+        "function_name": "put_inventory",
+        "file_path": "service.py",
+        "line_number": 36,
+        "end_line_number": 39,
+        "kind": "client_call",
+        "http_method": "PUT",
+        "raw_endpoint": "/inventory/{product_id}",
+        "normalized_endpoint": "/inventory/{PARAM}",
+        "function_params": [
+          {
+            "name": "product_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "qty",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [
+          "product_id"
+        ],
+        "query_params": [],
+        "body_params": [
+          "qty"
+        ],
+        "headers": [],
+        "code_snippet": "    def put_inventory(self, product_id: int, qty: int) -> Dict[str, Any]:\n        \"\"\"Auto-generated operation: putInventory\"\"\"\n        response = self._client.request(\"PUT\", f\"/inventory/{product_id}\", json={\"qty\": qty})\n        return response.json()",
+        "docstring": "Auto-generated operation: putInventory"
+      },
+      "param_diffs": [
+        {
+          "name": "product_id",
+          "status": "identical",
+          "manual_param": {
+            "name": "product_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "product_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Paramètre identique (int)"
+        },
+        {
+          "name": "quantity ➔ qty",
+          "status": "renamed_candidate",
+          "manual_param": {
+            "name": "quantity",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "qty",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Renommé (quantity dans manuel, qty dans autogénéré). Identique (int)"
+        },
+        {
+          "name": "reason",
+          "status": "manual_only",
+          "manual_param": {
+            "name": "reason",
+            "type_annotation": "str",
+            "default_value": "'restock'",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": null,
+          "details": "Uniquement dans le code manuel (Optionnel)"
+        }
+      ],
+      "summary": "2 différence(s) de paramètre(s)"
+    },
+    {
+      "id": "match_4",
+      "http_method": "DELETE",
+      "normalized_endpoint": "/users/{PARAM}",
+      "raw_endpoint_manual": "https://internal-api.service.local/api/v1/users/{user_id}",
+      "raw_endpoint_autogen": "/users/{id}",
+      "status": "MATCHED",
+      "param_status": "COMPATIBLE",
+      "manual_call": {
+        "function_name": "delete_user_account",
+        "file_path": "service.py",
+        "line_number": 41,
+        "end_line_number": 46,
+        "kind": "client_call",
+        "http_method": "DELETE",
+        "raw_endpoint": "https://internal-api.service.local/api/v1/users/{user_id}",
+        "normalized_endpoint": "/users/{PARAM}",
+        "function_params": [
+          {
+            "name": "user_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "purge_data",
+            "type_annotation": "bool",
+            "default_value": "True",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [
+          "user_id"
+        ],
+        "query_params": [
+          "purge_data"
+        ],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "    def delete_user_account(self, user_id: int, purge_data: bool = True) -> bool:\n        \"\"\"Delete user account and optionally purge GDPR records.\"\"\"\n        url = f\"{BASE_URL}/users/{user_id}\"\n        params = {\"purge_data\": purge_data}\n        response = requests.delete(url, headers=self.headers, params=params)\n        return response.status_code == 204",
+        "docstring": "Delete user account and optionally purge GDPR records."
+      },
+      "autogen_call": {
+        "function_name": "delete_user",
+        "file_path": "service.py",
+        "line_number": 41,
+        "end_line_number": 44,
+        "kind": "client_call",
+        "http_method": "DELETE",
+        "raw_endpoint": "/users/{id}",
+        "normalized_endpoint": "/users/{PARAM}",
+        "function_params": [
+          {
+            "name": "id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [
+          "id"
+        ],
+        "query_params": [],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "    def delete_user(self, id: int) -> bool:\n        \"\"\"Auto-generated operation: deleteUser\"\"\"\n        response = self._client.request(\"DELETE\", f\"/users/{id}\")\n        return response.status_code == 204",
+        "docstring": "Auto-generated operation: deleteUser"
+      },
+      "param_diffs": [
+        {
+          "name": "user_id ➔ id",
+          "status": "renamed_candidate",
+          "manual_param": {
+            "name": "user_id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "id",
+            "type_annotation": "int",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Renommé (user_id dans manuel, id dans autogénéré). Identique (int)"
+        },
+        {
+          "name": "purge_data",
+          "status": "manual_only",
+          "manual_param": {
+            "name": "purge_data",
+            "type_annotation": "bool",
+            "default_value": "True",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": null,
+          "details": "Uniquement dans le code manuel (Optionnel)"
+        }
+      ],
+      "summary": "2 différence(s) de paramètre(s)"
+    },
+    {
+      "id": "match_5",
+      "http_method": "GET",
+      "normalized_endpoint": "/catalog/search",
+      "raw_endpoint_manual": "https://internal-api.service.local/api/v1/catalog/search",
+      "raw_endpoint_autogen": "/catalog/search",
+      "status": "MATCHED",
+      "param_status": "COMPATIBLE",
+      "manual_call": {
+        "function_name": "search_catalog",
+        "file_path": "service.py",
+        "line_number": 48,
+        "end_line_number": 53,
+        "kind": "client_call",
+        "http_method": "GET",
+        "raw_endpoint": "https://internal-api.service.local/api/v1/catalog/search",
+        "normalized_endpoint": "/catalog/search",
+        "function_params": [
+          {
+            "name": "query",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "page",
+            "type_annotation": "int",
+            "default_value": "1",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "page_size",
+            "type_annotation": "int",
+            "default_value": "20",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [],
+        "query_params": [
+          "query",
+          "page",
+          "page_size"
+        ],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "    def search_catalog(self, query: str, page: int = 1, page_size: int = 20) -> List[Dict[str, Any]]:\n        \"\"\"Search products catalog with pagination.\"\"\"\n        url = f\"{BASE_URL}/catalog/search\"\n        params = {\"query\": query, \"page\": page, \"page_size\": page_size}\n        response = requests.get(url, headers=self.headers, params=params)\n        return response.json()",
+        "docstring": "Search products catalog with pagination."
+      },
+      "autogen_call": {
+        "function_name": "get_catalog_search",
+        "file_path": "service.py",
+        "line_number": 46,
+        "end_line_number": 50,
+        "kind": "client_call",
+        "http_method": "GET",
+        "raw_endpoint": "/catalog/search",
+        "normalized_endpoint": "/catalog/search",
+        "function_params": [
+          {
+            "name": "q",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "limit",
+            "type_annotation": "int",
+            "default_value": "25",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          {
+            "name": "offset",
+            "type_annotation": "int",
+            "default_value": "0",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [],
+        "query_params": [
+          "q",
+          "limit",
+          "offset"
+        ],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "    def get_catalog_search(self, q: str, limit: int = 25, offset: int = 0) -> List[Dict[str, Any]]:\n        \"\"\"Auto-generated operation: getCatalogSearch\"\"\"\n        params = {\"q\": q, \"limit\": limit, \"offset\": offset}\n        response = self._client.request(\"GET\", \"/catalog/search\", params=params)\n        return response.json()",
+        "docstring": "Auto-generated operation: getCatalogSearch"
+      },
+      "param_diffs": [
+        {
+          "name": "query ➔ q",
+          "status": "renamed_candidate",
+          "manual_param": {
+            "name": "query",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "q",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Renommé (query dans manuel, q dans autogénéré). Identique (str)"
+        },
+        {
+          "name": "page ➔ offset",
+          "status": "renamed_candidate",
+          "manual_param": {
+            "name": "page",
+            "type_annotation": "int",
+            "default_value": "1",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "offset",
+            "type_annotation": "int",
+            "default_value": "0",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Renommé (page dans manuel, offset dans autogénéré). Identique (int)"
+        },
+        {
+          "name": "page_size ➔ limit",
+          "status": "renamed_candidate",
+          "manual_param": {
+            "name": "page_size",
+            "type_annotation": "int",
+            "default_value": "20",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "limit",
+            "type_annotation": "int",
+            "default_value": "25",
+            "required": false,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Renommé (page_size dans manuel, limit dans autogénéré). Identique (int)"
+        }
+      ],
+      "summary": "3 différence(s) de paramètre(s)"
+    },
+    {
+      "id": "match_6",
+      "http_method": "GET",
+      "normalized_endpoint": "/health",
+      "raw_endpoint_manual": "https://internal-api.service.local/api/v1/health",
+      "raw_endpoint_autogen": null,
+      "status": "MANUAL_ONLY",
+      "param_status": "N/A",
+      "manual_call": {
+        "function_name": "legacy_ping",
+        "file_path": "service.py",
+        "line_number": 55,
+        "end_line_number": 59,
+        "kind": "client_call",
+        "http_method": "GET",
+        "raw_endpoint": "https://internal-api.service.local/api/v1/health",
+        "normalized_endpoint": "/health",
+        "function_params": [],
+        "path_params": [],
+        "query_params": [],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "    def legacy_ping(self) -> Dict[str, str]:\n        \"\"\"Old healthcheck endpoint - only in manual microservice.\"\"\"\n        url = f\"{BASE_URL}/health\"\n        response = requests.get(url, headers=self.headers)\n        return response.json()",
+        "docstring": "Old healthcheck endpoint - only in manual microservice."
+      },
+      "autogen_call": null,
+      "param_diffs": [],
+      "summary": "Endpoint présent uniquement dans le microservice manuel"
+    },
+    {
+      "id": "match_7",
+      "http_method": "GET",
+      "normalized_endpoint": "/payments/{PARAM}",
+      "raw_endpoint_manual": "/api/v1/payments/{payment_id}",
+      "raw_endpoint_autogen": "/payments/{id}",
+      "status": "MATCHED",
+      "param_status": "COMPATIBLE",
+      "manual_call": {
+        "function_name": "get_payment",
+        "file_path": "service.py",
+        "line_number": 64,
+        "end_line_number": 66,
+        "kind": "server_route",
+        "http_method": "GET",
+        "raw_endpoint": "/api/v1/payments/{payment_id}",
+        "normalized_endpoint": "/payments/{PARAM}",
+        "function_params": [
+          {
+            "name": "payment_id",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "path",
+            "description": null
+          },
+          {
+            "name": "detailed",
+            "type_annotation": "bool",
+            "default_value": "False",
+            "required": false,
+            "kind": "query",
+            "description": null
+          }
+        ],
+        "path_params": [
+          "payment_id"
+        ],
+        "query_params": [
+          "detailed"
+        ],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "def get_payment(payment_id: str, detailed: bool = False) -> Dict[str, Any]:\n    \"\"\"Retrieve payment details.\"\"\"\n    return {\"payment_id\": payment_id, \"detailed\": detailed, \"status\": \"completed\"}",
+        "docstring": "Retrieve payment details."
+      },
+      "autogen_call": {
+        "function_name": "retrieve_payment",
+        "file_path": "service.py",
+        "line_number": 60,
+        "end_line_number": 62,
+        "kind": "server_route",
+        "http_method": "GET",
+        "raw_endpoint": "/payments/{id}",
+        "normalized_endpoint": "/payments/{PARAM}",
+        "function_params": [
+          {
+            "name": "id",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "path",
+            "description": null
+          },
+          {
+            "name": "include_meta",
+            "type_annotation": "Optional[bool]",
+            "default_value": "None",
+            "required": false,
+            "kind": "query",
+            "description": null
+          }
+        ],
+        "path_params": [
+          "id"
+        ],
+        "query_params": [
+          "include_meta"
+        ],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "def retrieve_payment(id: str, include_meta: Optional[bool] = None) -> Dict[str, Any]:\n    \"\"\"Auto-generated route handler for payment retrieval.\"\"\"\n    return {\"id\": id, \"include_meta\": include_meta}",
+        "docstring": "Auto-generated route handler for payment retrieval."
+      },
+      "param_diffs": [
+        {
+          "name": "payment_id ➔ id",
+          "status": "renamed_candidate",
+          "manual_param": {
+            "name": "payment_id",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "path",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "id",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "path",
+            "description": null
+          },
+          "details": "Renommé (payment_id dans manuel, id dans autogénéré). Identique (str)"
+        },
+        {
+          "name": "detailed",
+          "status": "manual_only",
+          "manual_param": {
+            "name": "detailed",
+            "type_annotation": "bool",
+            "default_value": "False",
+            "required": false,
+            "kind": "query",
+            "description": null
+          },
+          "autogen_param": null,
+          "details": "Uniquement dans le code manuel (Optionnel)"
+        },
+        {
+          "name": "include_meta",
+          "status": "autogen_only",
+          "manual_param": null,
+          "autogen_param": {
+            "name": "include_meta",
+            "type_annotation": "Optional[bool]",
+            "default_value": "None",
+            "required": false,
+            "kind": "query",
+            "description": null
+          },
+          "details": "Uniquement dans le code autogénéré (Optionnel)"
+        }
+      ],
+      "summary": "3 différence(s) de paramètre(s)"
+    },
+    {
+      "id": "match_8",
+      "http_method": "POST",
+      "normalized_endpoint": "/webhooks/stripe",
+      "raw_endpoint_manual": "/api/v1/webhooks/stripe",
+      "raw_endpoint_autogen": "/webhooks/stripe",
+      "status": "MATCHED",
+      "param_status": "DIVERGENT",
+      "manual_call": {
+        "function_name": "handle_stripe_webhook",
+        "file_path": "service.py",
+        "line_number": 70,
+        "end_line_number": 72,
+        "kind": "server_route",
+        "http_method": "POST",
+        "raw_endpoint": "/api/v1/webhooks/stripe",
+        "normalized_endpoint": "/webhooks/stripe",
+        "function_params": [
+          {
+            "name": "event_type",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "query",
+            "description": null
+          },
+          {
+            "name": "payload",
+            "type_annotation": "Dict[str, Any]",
+            "default_value": null,
+            "required": true,
+            "kind": "query",
+            "description": null
+          }
+        ],
+        "path_params": [],
+        "query_params": [
+          "event_type",
+          "payload"
+        ],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "def handle_stripe_webhook(event_type: str, payload: Dict[str, Any]) -> Dict[str, str]:\n    \"\"\"Process incoming stripe payment webhook.\"\"\"\n    return {\"status\": \"accepted\", \"event\": event_type}",
+        "docstring": "Process incoming stripe payment webhook."
+      },
+      "autogen_call": {
+        "function_name": "process_stripe_event",
+        "file_path": "service.py",
+        "line_number": 66,
+        "end_line_number": 68,
+        "kind": "server_route",
+        "http_method": "POST",
+        "raw_endpoint": "/webhooks/stripe",
+        "normalized_endpoint": "/webhooks/stripe",
+        "function_params": [
+          {
+            "name": "payload",
+            "type_annotation": "Dict[str, Any]",
+            "default_value": null,
+            "required": true,
+            "kind": "query",
+            "description": null
+          }
+        ],
+        "path_params": [],
+        "query_params": [
+          "payload"
+        ],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "def process_stripe_event(payload: Dict[str, Any]) -> Dict[str, str]:\n    \"\"\"Auto-generated webhook handler.\"\"\"\n    return {\"received\": True}",
+        "docstring": "Auto-generated webhook handler."
+      },
+      "param_diffs": [
+        {
+          "name": "event_type",
+          "status": "manual_only",
+          "manual_param": {
+            "name": "event_type",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "query",
+            "description": null
+          },
+          "autogen_param": null,
+          "details": "Uniquement dans le code manuel (Requis)"
+        },
+        {
+          "name": "payload",
+          "status": "identical",
+          "manual_param": {
+            "name": "payload",
+            "type_annotation": "Dict[str, Any]",
+            "default_value": null,
+            "required": true,
+            "kind": "query",
+            "description": null
+          },
+          "autogen_param": {
+            "name": "payload",
+            "type_annotation": "Dict[str, Any]",
+            "default_value": null,
+            "required": true,
+            "kind": "query",
+            "description": null
+          },
+          "details": "Paramètre identique (Dict[str, Any])"
+        }
+      ],
+      "summary": "1 différence(s) de paramètre(s)"
+    },
+    {
+      "id": "match_9",
+      "http_method": "GET",
+      "normalized_endpoint": "/audit/logs",
+      "raw_endpoint_manual": null,
+      "raw_endpoint_autogen": "/audit/logs",
+      "status": "AUTOGEN_ONLY",
+      "param_status": "N/A",
+      "manual_call": null,
+      "autogen_call": {
+        "function_name": "get_audit_logs",
+        "file_path": "service.py",
+        "line_number": 52,
+        "end_line_number": 55,
+        "kind": "client_call",
+        "http_method": "GET",
+        "raw_endpoint": "/audit/logs",
+        "normalized_endpoint": "/audit/logs",
+        "function_params": [
+          {
+            "name": "start_date",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          }
+        ],
+        "path_params": [],
+        "query_params": [
+          "start_date"
+        ],
+        "body_params": [],
+        "headers": [],
+        "code_snippet": "    def get_audit_logs(self, start_date: str) -> List[Dict[str, Any]]:\n        \"\"\"Auto-generated operation: getAuditLogs - only in autogen microservice.\"\"\"\n        response = self._client.request(\"GET\", \"/audit/logs\", params={\"start_date\": start_date})\n        return response.json()",
+        "docstring": "Auto-generated operation: getAuditLogs - only in autogen microservice."
+      },
+      "param_diffs": [
+        {
+          "name": "start_date",
+          "status": "autogen_only",
+          "manual_param": null,
+          "autogen_param": {
+            "name": "start_date",
+            "type_annotation": "str",
+            "default_value": null,
+            "required": true,
+            "kind": "arg",
+            "description": null
+          },
+          "details": "Paramètre du code autogénéré (str)"
+        }
+      ],
+      "summary": "Endpoint présent uniquement dans le microservice autogénéré"
+    }
+  ]
+}
