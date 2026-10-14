@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Outil d'analyse de correspondance d'endpoints et de différences de paramètres entre microservices manuels et autogénérés.">
+    <title>Microservices Matrix Analyzer - Correspondance Endpoints & Paramètres</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="app-logo">
+                    <span class="logo-icon">⚡</span>
+                </div>
+                <div>
+                    <h1 class="app-title">Microservices Matrix Analyzer</h1>
+                    <p class="app-subtitle">Correspondance des endpoints & analyse différentielle des paramètres</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="btn btn-secondary" id="btnLoadDemo" title="Charger un jeu de données de test">
+                    <span>✨ Exemple Démo</span>
+                </button>
+                <button class="btn-theme-toggle" id="btnThemeToggle" aria-label="Changer le thème">
+                    <span class="theme-icon">🌙</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Source Selection Card -->
+            <section class="card config-card" id="configSection">
+                <div class="card-header">
+                    <h2 class="card-title">1. Sources des Microservices</h2>
+                    <span class="card-badge">Python AST Analysis</span>
+                </div>
+                <div class="config-grid">
+                    <!-- Manual Service Input -->
+                    <div class="source-box" id="manualSourceBox">
+                        <div class="source-header">
+                            <span class="source-tag manual-tag">Microservice Manuel</span>
+                            <span class="source-status" id="manualStatus">Non chargé</span>
+                        </div>
+                        <p class="source-desc">Dossier contenant le code développé manuellement (clients API ou routes serveurs).</p>
+                        <div class="input-group">
+                            <input type="text" id="manualPathInput" class="form-input" placeholder="ex: ./samples/manual_service" value="samples/manual_service">
+                        </div>
+                        <div class="upload-dropzone" id="manualDropzone">
+                            <span class="dropzone-icon">📁</span>
+                            <span class="dropzone-text">Glissez des fichiers <code>.py</code> ou</span>
+                            <label class="btn btn-outline btn-sm">
+                                Choisir un dossier
+                                <input type="file" id="manualFolderInput" webkitdirectory directory multiple hidden>
+                            </label>
+                            <span class="file-count" id="manualFileCount"></span>
+                        </div>
+                    </div>
+
+                    <!-- Autogen Service Input -->
+                    <div class="source-box" id="autogenSourceBox">
+                        <div class="source-header">
+                            <span class="source-tag autogen-tag">Microservice Autogénéré</span>
+                            <span class="source-status" id="autogenStatus">Non chargé</span>
+                        </div>
+                        <p class="source-desc">Dossier issu de la génération OpenAPI / OpenAI (SDKs client, stubs de routes).</p>
+                        <div class="input-group">
+                            <input type="text" id="autogenPathInput" class="form-input" placeholder="ex: ./samples/autogen_service" value="samples/autogen_service">
+                        </div>
+                        <div class="upload-dropzone" id="autogenDropzone">
+                            <span class="dropzone-icon">🤖</span>
+                            <span class="dropzone-text">Glissez des fichiers <code>.py</code> ou</span>
+                            <label class="btn btn-outline btn-sm">
+                                Choisir un dossier
+                                <input type="file" id="autogenFolderInput" webkitdirectory directory multiple hidden>
+                            </label>
+                            <span class="file-count" id="autogenFileCount"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="config-actions">
+                    <button class="btn btn-primary btn-lg" id="btnAnalyze">
+                        <span class="btn-spinner" id="analyzeSpinner" hidden></span>
+                        <span class="btn-text">🚀 Lancer l'Analyse Comparative</span>
+                    </button>
+                    <div class="error-banner" id="errorBanner" hidden></div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection" hidden>
+                <!-- KPI Statistics Cards -->
+                <div class="stats-row">
+                    <div class="stat-card" id="cardTotal">
+                        <div class="stat-icon-wrap icon-total">🎯</div>
+                        <div class="stat-info">
+                            <div class="stat-number" id="statTotal">0</div>
+                            <div class="stat-label">Total Endpoints Détectés</div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card" id="cardMatched">
+                        <div class="stat-icon-wrap icon-matched">🔗</div>
+                        <div class="stat-info">
+                            <div class="stat-number" id="statMatched">0</div>
+                            <div class="stat-label">Correspondances Trouvées</div>
+                        </div>
+                        <div class="stat-badge badge-matched" id="statMatchedPercent">0%</div>
+                    </div>
+
+                    <div class="stat-card" id="cardDivergent">
+                        <div class="stat-icon-wrap icon-divergent">⚠️</div>
+                        <div class="stat-info">
+                            <div class="stat-number" id="statDivergent">0</div>
+                            <div class="stat-label">Paramètres Divergents</div>
+                        </div>
+                        <div class="stat-badge badge-divergent">À corriger</div>
+                    </div>
+
+                    <div class="stat-card" id="cardIdentical">
+                        <div class="stat-icon-wrap icon-identical">✨</div>
+                        <div class="stat-info">
+                            <div class="stat-number" id="statIdentical">0</div>
+                            <div class="stat-label">Paramètres 100% Identiques</div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card" id="cardOrphans">
+                        <div class="stat-icon-wrap icon-orphan">🔍</div>
+                        <div class="stat-info">
+                            <div class="stat-number" id="statOrphans">0</div>
+                            <div class="stat-label">Endpoints Sans Correspondance</div>
+                        </div>
+                        <div class="orphan-breakdown" id="orphanBreakdown">
+                            <span id="statManualOnly">0 manuel</span> · <span id="statAutogenOnly">0 autogénéré</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Matrix View & Toolbar -->
+                <div class="card matrix-card">
+                    <div class="matrix-toolbar">
+                        <div class="toolbar-search">
+                            <span class="search-icon">🔍</span>
+                            <input type="text" id="matrixSearch" class="search-input" placeholder="Rechercher par endpoint, fonction, fichier, paramètre...">
+                        </div>
+
+                        <div class="toolbar-filters">
+                            <div class="filter-group">
+                                <span class="filter-label">Méthode :</span>
+                                <div class="filter-pills" id="methodFilterPills">
+                                    <button class="pill active" data-method="ALL">Tous</button>
+                                    <button class="pill" data-method="GET">GET</button>
+                                    <button class="pill" data-method="POST">POST</button>
+                                    <button class="pill" data-method="PUT">PUT</button>
+                                    <button class="pill" data-method="DELETE">DELETE</button>
+                                    <button class="pill" data-method="PATCH">PATCH</button>
+                                </div>
+                            </div>
+
+                            <div class="filter-group">
+                                <span class="filter-label">Statut :</span>
+                                <div class="filter-pills" id="statusFilterPills">
+                                    <button class="pill active" data-status="ALL">Tous</button>
+                                    <button class="pill" data-status="MATCHED">Correspondances</button>
+                                    <button class="pill" data-status="DIVERGENT">Divergents</button>
+                                    <button class="pill" data-status="IDENTICAL">Identiques</button>
+                                    <button class="pill" data-status="MANUAL_ONLY">Manuel seul</button>
+                                    <button class="pill" data-status="AUTOGEN_ONLY">Autogénéré seul</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="toolbar-exports">
+                            <button class="btn btn-outline btn-sm" id="btnExportCSV" title="Exporter vers Excel / CSV">
+                                <span>📊 Export CSV</span>
+                            </button>
+                            <button class="btn btn-outline btn-sm" id="btnExportJSON" title="Exporter au format JSON">
+                                <span>📄 Export JSON</span>
+                            </button>
+                            <button class="btn btn-outline btn-sm" id="btnExportHTML" title="Télécharger le rapport HTML autonome">
+                                <span>🌐 Rapport HTML</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Matrix Table -->
+                    <div class="table-responsive">
+                        <table class="matrix-table" id="matrixTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 22%;">Endpoint Cible</th>
+                                    <th style="width: 26%;">Microservice Manuel</th>
+                                    <th style="width: 26%;">Microservice Autogénéré</th>
+                                    <th style="width: 16%;">Statut & Paramètres</th>
+                                    <th style="width: 10%; text-align: center;">Différence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="matrixTableBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Deep Parameter Diff Modal -->
+        <dialog id="paramDiffModal" class="modal-dialog">
+            <div class="modal-wrapper">
+                <header class="modal-header">
+                    <div class="modal-title-group">
+                        <div class="modal-endpoint" id="modalEndpointBadge"></div>
+                        <h3 class="modal-heading" id="modalHeading">Comparaison détaillée des paramètres</h3>
+                    </div>
+                    <button class="modal-close-btn" id="modalCloseBtn" aria-label="Fermer la boîte de dialogue">&times;</button>
+                </header>
+
+                <div class="modal-content">
+                    <div class="diff-summary-banner" id="modalSummaryBanner"></div>
+
+                    <div class="diff-section">
+                        <h4 class="diff-section-title">Matrice différentielle des paramètres d'appels</h4>
+                        <div class="param-diff-table-container">
+                            <table class="param-diff-table">
+                                <thead>
+                                    <tr>
+                                        <th>Paramètre</th>
+                                        <th>Dans le Manuel</th>
+                                        <th>Dans l'Autogénéré</th>
+                                        <th>Statut</th>
+                                        <th>Détail de la différence</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="modalParamTableBody">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="diff-section">
+                        <h4 class="diff-section-title">Comparaison du code source extrait</h4>
+                        <div class="code-compare-grid">
+                            <div class="code-box">
+                                <div class="code-box-header">
+                                    <span class="source-tag manual-tag">Code Manuel</span>
+                                    <span class="code-file-loc" id="modalManualLoc"></span>
+                                </div>
+                                <pre class="code-pre"><code id="modalManualCode"></code></pre>
+                            </div>
+
+                            <div class="code-box">
+                                <div class="code-box-header">
+                                    <span class="source-tag autogen-tag">Code Autogénéré</span>
+                                    <span class="code-file-loc" id="modalAutogenLoc"></span>
+                                </div>
+                                <pre class="code-pre"><code id="modalAutogenCode"></code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </dialog>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

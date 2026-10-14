@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""
+Web Server for Microservices Endpoint & Parameter Matrix Analyzer.
+Zero external dependencies, powered by Python http.server.
+"""
+import os
+import sys
+import json
+import socket
+import threading
+import webbrowser
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+import urllib.parse
+from analyzer.parser import parse_service_directory, parse_files_in_memory
+from analyzer.matcher import match_microservices
+from analyzer.exporter import export_to_json, export_to_csv, export_to_standalone_html
+
+DEFAULT_PORT = 8080
+WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+
+class ReusableHTTPServer(HTTPServer):
+    allow_reuse_address = True
+
+class MatrixServerHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=WEB_DIR, **kwargs)
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        if parsed.path == "/api/samples":
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            manual_dir = os.path.join(base_dir, "samples", "manual_service")
+            autogen_dir = os.path.join(base_dir, "samples", "autogen_service")
+
+            manual_calls = parse_service_directory(manual_dir)
+            autogen_calls = parse_service_directory(autogen_dir)
+            result = match_microservices(manual_calls, autogen_calls, manual_dir, autogen_dir)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(result.to_dict(), ensure_ascii=False).encode("utf-8"))
+            return
+
+        return super().do_GET()
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path in ("/api/analyze", "/api/export/csv", "/api/export/html", "/api/export/json"):
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+
+            try:
+                payload = json.loads(body) if body else {}
+            except Exception as e:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"Invalid JSON payload: {e}"}).encode("utf-8"))
+                return
+
+            manual_path = payload.get("manual_path", "").strip()
+            autogen_path = payload.get("autogen_path", "").strip()
+            manual_files = payload.get("manual_files", [])
+            autogen_files = payload.get("autogen_files", [])
+
+            if manual_files and autogen_files:
+                manual_calls = parse_files_in_memory(manual_files)
+                autogen_calls = parse_files_in_memory(autogen_files)
+                manual_label = "Fichiers manuels importés"
+                autogen_label = "Fichiers autogénérés importés"
+            elif manual_path and autogen_path:
+                if not os.path.exists(manual_path):
+                    self._error(f"Le chemin manuel '{manual_path}' est introuvable sur le serveur.")
+                    return
+                if not os.path.exists(autogen_path):
+                    self._error(f"Le chemin autogénéré '{autogen_path}' est introuvable sur le serveur.")
+                    return
+                manual_calls = parse_service_directory(manual_path)
+                autogen_calls = parse_service_directory(autogen_path)
+                manual_label = manual_path
+                autogen_label = autogen_path
+            else:
+                self._error("Veuillez renseigner les chemins des deux microservices ou importer leurs fichiers.")
+                return
+
+            result = match_microservices(manual_calls, autogen_calls, manual_label, autogen_label)
+
+            if parsed.path == "/api/analyze":
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps(result.to_dict(), ensure_ascii=False).encode("utf-8"))
+            elif parsed.path == "/api/export/csv":
+                csv_data = export_to_csv(result)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Disposition", 'attachment; filename="matrice_microservices.csv"')
+                self.end_headers()
+                self.wfile.write(csv_data.encode("utf-8"))
+            elif parsed.path == "/api/export/html":
+                html_data = export_to_standalone_html(result)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Disposition", 'attachment; filename="rapport_microservices.html"')
+                self.end_headers()
+                self.wfile.write(html_data.encode("utf-8"))
+            elif parsed.path == "/api/export/json":
+                json_data = export_to_json(result)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Disposition", 'attachment; filename="analyse_microservices.json"')
+                self.end_headers()
+                self.wfile.write(json_data.encode("utf-8"))
+            return
+
+        self.send_response(404)
+        self.end_headers()
+
+    def _error(self, message: str, code: int = 400):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(json.dumps({"error": message}, ensure_ascii=False).encode("utf-8"))
+
+
+def find_free_port(start_port: int) -> int:
+    port = start_port
+    while port < start_port + 50:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("", port))
+                return port
+            except OSError:
+                port += 1
+    return start_port
+
+
+def run_server(port=DEFAULT_PORT, auto_open=True):
+    actual_port = find_free_port(port)
+    if actual_port != port:
+        print(f"⚠️  Le port {port} est déjà utilisé. Utilisation du port {actual_port}.")
+
+    server_address = ("", actual_port)
+    httpd = ReusableHTTPServer(server_address, MatrixServerHandler)
+    url = f"http://localhost:{actual_port}"
+
+    print("=" * 60)
+    print("⚡ Microservices Matrix Analyzer - Serveur Web")
+    print("=" * 60)
+    print(f"🚀 Serveur actif sur : {url}")
+    print(f"📂 Répertoire web    : {WEB_DIR}")
+    print("💡 Appuyez sur Ctrl+C pour arrêter le serveur.")
+    print("=" * 60)
+
+    if auto_open:
+        def open_browser():
+            print(f"🌐 Ouverture du navigateur sur {url} ...")
+            webbrowser.open(url)
+        threading.Timer(0.6, open_browser).start()
+
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nArrêt du serveur. À bientôt !")
+        httpd.server_close()
+
+
+if __name__ == "__main__":
+    requested_port = DEFAULT_PORT
+    auto_open = True
+
+    for arg in sys.argv[1:]:
+        if arg == "--no-browser":
+            auto_open = False
+        elif arg.isdigit():
+            requested_port = int(arg)
+
+    run_server(requested_port, auto_open=auto_open)
