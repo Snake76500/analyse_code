@@ -59,13 +59,38 @@ const elements = {
     modalManualLoc: document.getElementById('modalManualLoc'),
     modalAutogenLoc: document.getElementById('modalAutogenLoc'),
     modalManualCode: document.getElementById('modalManualCode'),
-    modalAutogenCode: document.getElementById('modalAutogenCode')
+    modalAutogenCode: document.getElementById('modalAutogenCode'),
+
+    // Tabs
+    tabMatrix: document.getElementById('tabMatrix'),
+    tabMigrate: document.getElementById('tabMigrate'),
+    viewMatrix: document.getElementById('viewMatrix'),
+    viewMigrate: document.getElementById('viewMigrate'),
+
+    // Migration View Elements
+    migTargetInput: document.getElementById('migTargetInput'),
+    migManualInput: document.getElementById('migManualInput'),
+    migAutogenInput: document.getElementById('migAutogenInput'),
+    migExampleInput: document.getElementById('migExampleInput'),
+    btnMigrateLoadDemo: document.getElementById('btnMigrateLoadDemo'),
+    btnMigratePreview: document.getElementById('btnMigratePreview'),
+    btnMigrateApply: document.getElementById('btnMigrateApply'),
+    migPreviewSpinner: document.getElementById('migPreviewSpinner'),
+    migApplySpinner: document.getElementById('migApplySpinner'),
+    migErrorBanner: document.getElementById('migErrorBanner'),
+    migResultsSection: document.getElementById('migResultsSection'),
+    migStatScanned: document.getElementById('migStatScanned'),
+    migStatModified: document.getElementById('migStatModified'),
+    migStatCalls: document.getElementById('migStatCalls'),
+    migFilesContainer: document.getElementById('migFilesContainer')
 };
 
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
+    setupTabs();
     setupEventListeners();
     setupDragAndDrop();
+    setupMigrationListeners();
     loadDemoData();
 });
 
@@ -585,4 +610,167 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+/* Tab Navigation */
+function setupTabs() {
+    elements.tabMatrix.addEventListener('click', () => switchTab('matrix'));
+    elements.tabMigrate.addEventListener('click', () => switchTab('migrate'));
+}
+
+function switchTab(tab) {
+    if (tab === 'matrix') {
+        elements.tabMatrix.classList.add('active');
+        elements.tabMigrate.classList.remove('active');
+        elements.viewMatrix.hidden = false;
+        elements.viewMigrate.hidden = true;
+    } else {
+        elements.tabMigrate.classList.add('active');
+        elements.tabMatrix.classList.remove('active');
+        elements.viewMigrate.hidden = false;
+        elements.viewMatrix.hidden = true;
+    }
+}
+
+/* Migration View Logic */
+function setupMigrationListeners() {
+    elements.btnMigrateLoadDemo.addEventListener('click', loadMigrationDemo);
+    elements.btnMigratePreview.addEventListener('click', () => runMigration(false));
+    elements.btnMigrateApply.addEventListener('click', () => {
+        if (confirm("Confirmez-vous l'application en place des modifications sur le code source ? (Des sauvegardes .bak seront créées)")) {
+            runMigration(true);
+        }
+    });
+}
+
+async function loadMigrationDemo() {
+    try {
+        const res = await fetch('/api/migrate/demo');
+        const data = await res.json();
+        elements.migTargetInput.value = data.target_path;
+        elements.migManualInput.value = data.manual_path;
+        elements.migAutogenInput.value = data.autogen_path;
+        elements.migExampleInput.value = data.example_path;
+        runMigration(false);
+    } catch (err) {
+        showMigError(`Impossible de charger la démo de migration : ${err.message}`);
+    }
+}
+
+async function runMigration(applyInPlace = false) {
+    clearMigError();
+    const spinner = applyInPlace ? elements.migApplySpinner : elements.migPreviewSpinner;
+    const btn = applyInPlace ? elements.btnMigrateApply : elements.btnMigratePreview;
+    spinner.hidden = false;
+    btn.disabled = true;
+
+    const payload = {
+        target_path: elements.migTargetInput.value.trim(),
+        manual_path: elements.migManualInput.value.trim(),
+        autogen_path: elements.migAutogenInput.value.trim(),
+        example_path: elements.migExampleInput.value.trim(),
+        apply_in_place: applyInPlace
+    };
+
+    const endpoint = applyInPlace ? '/api/migrate/apply' : '/api/migrate/preview';
+
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'Erreur lors de la migration');
+        }
+        displayMigrationResults(data, applyInPlace);
+    } catch (err) {
+        showMigError(err.message);
+    } finally {
+        spinner.hidden = true;
+        btn.disabled = false;
+    }
+}
+
+function displayMigrationResults(report, applyInPlace) {
+    elements.migResultsSection.hidden = false;
+    animateCounter(elements.migStatScanned, report.total_files_scanned);
+    animateCounter(elements.migStatModified, report.files_modified_count);
+    animateCounter(elements.migStatCalls, report.total_calls_migrated);
+
+    const container = elements.migFilesContainer;
+    container.innerHTML = '';
+
+    const modified = (report.file_results || []).filter(f => f.changes_count > 0);
+    if (modified.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding: 48px; background:var(--bg-card); border-radius:var(--radius-md); border:1px solid var(--border);">
+                <span style="font-size:36px;">🎉</span>
+                <h3 style="margin-top:12px; font-weight:700;">Aucun appel à migrer</h3>
+                <p style="color:var(--text-muted); font-size:14px; margin-top:4px;">Aucun fichier du répertoire ne contient d'appel au microservice manuel.</p>
+            </div>
+        `;
+        return;
+    }
+
+    modified.forEach(f => {
+        const card = document.createElement('div');
+        card.className = 'mig-file-card';
+
+        let diffHtml = '';
+        if (f.diff) {
+            diffHtml = f.diff.split('\n').map(line => {
+                const escaped = escapeHtml(line);
+                if (line.startsWith('+') && !line.startsWith('+++')) {
+                    return `<span class="diff-line-add">${escaped}</span>`;
+                } else if (line.startsWith('-') && !line.startsWith('---')) {
+                    return `<span class="diff-line-del">${escaped}</span>`;
+                } else if (line.startsWith('@@') || line.startsWith('---') || line.startsWith('+++')) {
+                    return `<span class="diff-line-hdr">${escaped}</span>`;
+                } else {
+                    return `<span>${escaped}</span>\n`;
+                }
+            }).join('');
+        }
+
+        const rulesHtml = (f.applied_rules || []).map(r => `
+            <div class="mig-rule-item">
+                <span class="mig-rule-icon">✓</span>
+                <span>${escapeHtml(r)}</span>
+            </div>
+        `).join('');
+
+        const warningsHtml = (f.warnings || []).map(w => `
+            <div class="mig-warning-item">
+                <span>⚠️</span>
+                <span>${escapeHtml(w)}</span>
+            </div>
+        `).join('');
+
+        card.innerHTML = `
+            <div class="mig-file-header">
+                <span class="mig-file-title">
+                    <span>📄</span>
+                    <code>${escapeHtml(f.file_path)}</code>
+                </span>
+                <span class="status-pill MATCHED-IDENTICAL">${f.changes_count} modification(s)</span>
+            </div>
+            ${rulesHtml || warningsHtml ? `<div class="mig-rules-list">${rulesHtml}${warningsHtml}</div>` : ''}
+            <div class="mig-diff-view">${diffHtml}</div>
+        `;
+        container.appendChild(card);
+    });
+
+    elements.migResultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function showMigError(msg) {
+    elements.migErrorBanner.textContent = msg;
+    elements.migErrorBanner.hidden = false;
+}
+
+function clearMigError() {
+    elements.migErrorBanner.hidden = true;
+    elements.migErrorBanner.textContent = '';
 }

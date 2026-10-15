@@ -33,9 +33,22 @@
             </div>
         </header>
 
+        <!-- Navigation Tabs -->
+        <nav class="app-nav">
+            <button class="nav-tab active" id="tabMatrix" data-tab="matrix">
+                <span>📊 Matrice de Correspondance</span>
+            </button>
+            <button class="nav-tab" id="tabMigrate" data-tab="migrate">
+                <span>🚀 Migration de Code</span>
+                <span class="nav-badge">Nouveau</span>
+            </button>
+        </nav>
+
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Source Selection Card -->
+            <!-- VIEW 1: Matrix Analyzer -->
+            <div id="viewMatrix" class="tab-view">
+                <!-- Source Selection Card -->
             <section class="card config-card" id="configSection">
                 <div class="card-header">
                     <h2 class="card-title">1. Sources des Microservices</h2>
@@ -210,7 +223,110 @@
                     </div>
                 </div>
             </section>
-        </main>
+        </div>
+
+        <!-- VIEW 2: Code Migration Tool -->
+        <div id="viewMigrate" class="tab-view" hidden>
+            <section class="card config-card">
+                <div class="card-header">
+                    <h2 class="card-title">Outil de Migration de Code</h2>
+                    <span class="card-badge">Automated AST Rewriting</span>
+                </div>
+                <p style="color:var(--text-muted); margin-bottom:20px; font-size:14px; line-height: 1.6;">
+                    Remplace automatiquement les appels faits aux microservices manuels par les fonctions et signatures des microservices autogénérés, en s'inspirant de votre fichier exemple de migration.
+                </p>
+                <div class="config-grid mig-grid">
+                    <div class="source-box">
+                        <div class="source-header">
+                            <span class="source-tag manual-tag">1. Répertoire du Code à Migrer</span>
+                        </div>
+                        <p class="source-desc">Dossier contenant vos applications ou services clients consommateurs.</p>
+                        <div class="input-group">
+                            <input type="text" id="migTargetInput" class="form-input" value="samples/client_app" placeholder="ex: ./mon_code_client">
+                        </div>
+                    </div>
+
+                    <div class="source-box">
+                        <div class="source-header">
+                            <span class="source-tag manual-tag">2. Microservice Manuel</span>
+                        </div>
+                        <p class="source-desc">Dossier du microservice développé manuellement.</p>
+                        <div class="input-group">
+                            <input type="text" id="migManualInput" class="form-input" value="samples/manual_service" placeholder="ex: ./manual_service">
+                        </div>
+                    </div>
+
+                    <div class="source-box">
+                        <div class="source-header">
+                            <span class="source-tag autogen-tag">3. Microservice Autogénéré</span>
+                        </div>
+                        <p class="source-desc">Dossier du microservice autogénéré (OpenAPI / OpenAI).</p>
+                        <div class="input-group">
+                            <input type="text" id="migAutogenInput" class="form-input" value="samples/autogen_service" placeholder="ex: ./autogen_service">
+                        </div>
+                    </div>
+
+                    <div class="source-box">
+                        <div class="source-header">
+                            <span class="source-tag" style="background:var(--purple-bg); color:var(--purple); border:1px solid var(--purple-border);">4. Fichier Exemple de Migration</span>
+                        </div>
+                        <p class="source-desc">Fichier Python avec sections avant/après ou fichier diff (.patch).</p>
+                        <div class="input-group">
+                            <input type="text" id="migExampleInput" class="form-input" value="samples/migration_example.py" placeholder="ex: ./samples/migration_example.py">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="config-actions">
+                    <button class="btn btn-secondary" id="btnMigrateLoadDemo">
+                        <span>✨ Exemple Démo</span>
+                    </button>
+                    <button class="btn btn-primary btn-lg" id="btnMigratePreview">
+                        <span class="btn-spinner" id="migPreviewSpinner" hidden></span>
+                        <span class="btn-text">⚡ Prévisualiser la Migration (Diff)</span>
+                    </button>
+                    <button class="btn btn-outline btn-lg" id="btnMigrateApply" style="border-color:var(--success); color:var(--success);" title="Applique les modifications directement aux fichiers avec une copie .bak">
+                        <span class="btn-spinner" id="migApplySpinner" hidden></span>
+                        <span class="btn-text">✅ Appliquer en Place (avec .bak)</span>
+                    </button>
+                    <div class="error-banner" id="migErrorBanner" hidden></div>
+                </div>
+            </section>
+
+            <!-- Migration Results Section -->
+            <section class="results-section" id="migResultsSection" hidden>
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-icon-wrap" style="background:rgba(99,102,241,0.15); color:var(--primary);">📂</div>
+                        <div class="stat-info">
+                            <div class="stat-number" id="migStatScanned">0</div>
+                            <div class="stat-label">Fichiers Python Analysés</div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon-wrap icon-matched">📝</div>
+                        <div class="stat-info">
+                            <div class="stat-number" id="migStatModified" style="color:var(--success);">0</div>
+                            <div class="stat-label">Fichiers Impactés</div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon-wrap icon-divergent">🔄</div>
+                        <div class="stat-info">
+                            <div class="stat-number" id="migStatCalls" style="color:var(--info);">0</div>
+                            <div class="stat-label">Appels & Paramètres Migrés</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="migFilesContainer" class="mig-files-container">
+                    <!-- Cards populated dynamically -->
+                </div>
+            </section>
+        </div>
+    </main>
 
         <!-- Deep Parameter Diff Modal -->
         <dialog id="paramDiffModal" class="modal-dialog">

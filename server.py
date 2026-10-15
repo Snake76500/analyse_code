@@ -14,6 +14,7 @@ import urllib.parse
 from analyzer.parser import parse_service_directory, parse_files_in_memory
 from analyzer.matcher import match_microservices
 from analyzer.exporter import export_to_json, export_to_csv, export_to_standalone_html
+from migrator.engine import CodeMigrationEngine
 
 DEFAULT_PORT = 8080
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -48,10 +49,75 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(result.to_dict(), ensure_ascii=False).encode("utf-8"))
             return
 
+        if parsed.path == "/api/migrate/demo":
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            demo_data = {
+                "target_path": os.path.join(base_dir, "samples", "client_app"),
+                "manual_path": os.path.join(base_dir, "samples", "manual_service"),
+                "autogen_path": os.path.join(base_dir, "samples", "autogen_service"),
+                "example_path": os.path.join(base_dir, "samples", "migration_example.py")
+            }
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(demo_data, ensure_ascii=False).encode("utf-8"))
+            return
+
         return super().do_GET()
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path in ("/api/migrate/preview", "/api/migrate/apply"):
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+
+            try:
+                payload = json.loads(body) if body else {}
+            except Exception as e:
+                self._error(f"Invalid JSON payload: {e}")
+                return
+
+            target_path = payload.get("target_path", "").strip()
+            manual_path = payload.get("manual_path", "").strip()
+            autogen_path = payload.get("autogen_path", "").strip()
+            example_path = payload.get("example_path", "").strip()
+            example_content = payload.get("example_content", "").strip()
+            output_dir = payload.get("output_dir", "").strip() or None
+            apply_in_place = (parsed.path == "/api/migrate/apply") or payload.get("apply_in_place", False)
+
+            if not target_path or not os.path.exists(target_path):
+                self._error(f"Le dossier du code cible '{target_path}' est introuvable.")
+                return
+            if not manual_path or not os.path.exists(manual_path):
+                self._error(f"Le microservice manuel '{manual_path}' est introuvable.")
+                return
+            if not autogen_path or not os.path.exists(autogen_path):
+                self._error(f"Le microservice autogénéré '{autogen_path}' est introuvable.")
+                return
+            if not example_content and (not example_path or not os.path.exists(example_path)):
+                self._error(f"Le fichier exemple '{example_path}' est introuvable.")
+                return
+
+            try:
+                engine = CodeMigrationEngine(
+                    manual_service_path=manual_path,
+                    autogen_service_path=autogen_path,
+                    example_migration_path=example_path,
+                    example_content=example_content
+                )
+                report = engine.migrate_directory(
+                    target_dir=target_path,
+                    output_dir=output_dir,
+                    apply_in_place=apply_in_place
+                )
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps(report.to_dict(), ensure_ascii=False).encode("utf-8"))
+            except Exception as e:
+                self._error(f"Erreur durant la migration : {e}", 500)
+            return
 
         if parsed.path in ("/api/analyze", "/api/export/csv", "/api/export/html", "/api/export/json"):
             content_length = int(self.headers.get("Content-Length", 0))
