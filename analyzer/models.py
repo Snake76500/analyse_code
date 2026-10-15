@@ -34,6 +34,8 @@ class EndpointCall:
     headers: List[str] = field(default_factory=list)
     code_snippet: str = ""
     docstring: Optional[str] = None
+    callee_function: Optional[str] = None
+    caller_chain: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -51,7 +53,9 @@ class EndpointCall:
             "body_params": self.body_params,
             "headers": self.headers,
             "code_snippet": self.code_snippet,
-            "docstring": self.docstring
+            "docstring": self.docstring,
+            "callee_function": self.callee_function,
+            "caller_chain": self.caller_chain
         }
 
 

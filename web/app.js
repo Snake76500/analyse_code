@@ -326,12 +326,15 @@ function renderMatrixTable() {
         let manualHtml = '';
         if (m.manual_call) {
             const kindBadge = m.manual_call.kind === 'client_call' ? 'Client' : 'Route';
+            const calleeBadge = m.manual_call.callee_function ? 
+                `<span class="func-meta-badge" style="color:#c084fc; background:rgba(168,85,247,0.12);" title="Fonction parente appelant ${escapeHtml(m.manual_call.callee_function)}()">via ${escapeHtml(m.manual_call.callee_function)}()</span>` : '';
             manualHtml = `
                 <div class="func-cell">
-                    <span class="func-signature">${m.manual_call.function_name}()</span>
+                    <span class="func-signature">${escapeHtml(m.manual_call.function_name)}()</span>
                     <div class="func-meta">
                         <span class="func-meta-badge">${kindBadge}</span>
-                        <span>${m.manual_call.file_path}:${m.manual_call.line_number}</span>
+                        ${calleeBadge}
+                        <span>${escapeHtml(m.manual_call.file_path)}:${m.manual_call.line_number}</span>
                     </div>
                 </div>
             `;
@@ -342,12 +345,15 @@ function renderMatrixTable() {
         let autogenHtml = '';
         if (m.autogen_call) {
             const kindBadge = m.autogen_call.kind === 'client_call' ? 'Client' : 'Route';
+            const calleeBadge = m.autogen_call.callee_function ? 
+                `<span class="func-meta-badge" style="color:#c084fc; background:rgba(168,85,247,0.12);" title="Fonction parente appelant ${escapeHtml(m.autogen_call.callee_function)}()">via ${escapeHtml(m.autogen_call.callee_function)}()</span>` : '';
             autogenHtml = `
                 <div class="func-cell">
-                    <span class="func-signature">${m.autogen_call.function_name}()</span>
+                    <span class="func-signature">${escapeHtml(m.autogen_call.function_name)}()</span>
                     <div class="func-meta">
                         <span class="func-meta-badge">${kindBadge}</span>
-                        <span>${m.autogen_call.file_path}:${m.autogen_call.line_number}</span>
+                        ${calleeBadge}
+                        <span>${escapeHtml(m.autogen_call.file_path)}:${m.autogen_call.line_number}</span>
                     </div>
                 </div>
             `;
@@ -456,8 +462,12 @@ window.openDiffModal = function(matchId) {
         pBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color: var(--text-dim);">Aucun paramètre détecté pour cet endpoint.</td></tr>';
     }
 
-    elements.modalManualLoc.textContent = match.manual_call ? `${match.manual_call.file_path}:${match.manual_call.line_number}` : 'N/A';
-    elements.modalAutogenLoc.textContent = match.autogen_call ? `${match.autogen_call.file_path}:${match.autogen_call.line_number}` : 'N/A';
+    elements.modalManualLoc.innerHTML = match.manual_call ? 
+        `${escapeHtml(match.manual_call.file_path)}:${match.manual_call.line_number}` + (match.manual_call.callee_function ? ` <span style="color:#c084fc; font-weight:600;">(appelle ${escapeHtml(match.manual_call.callee_function)}())</span>` : '') 
+        : 'N/A';
+    elements.modalAutogenLoc.innerHTML = match.autogen_call ? 
+        `${escapeHtml(match.autogen_call.file_path)}:${match.autogen_call.line_number}` + (match.autogen_call.callee_function ? ` <span style="color:#c084fc; font-weight:600;">(appelle ${escapeHtml(match.autogen_call.callee_function)}())</span>` : '') 
+        : 'N/A';
 
     elements.modalManualCode.textContent = match.manual_call ? match.manual_call.code_snippet : '# Aucun code manuel disponible pour cet endpoint';
     elements.modalAutogenCode.textContent = match.autogen_call ? match.autogen_call.code_snippet : '# Aucun code autogénéré disponible pour cet endpoint';

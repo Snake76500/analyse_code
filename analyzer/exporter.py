@@ -33,10 +33,14 @@ def export_to_csv(result: AnalysisResult) -> str:
 
     for match in result.matches:
         m_func = match.manual_call.function_name if match.manual_call else ""
+        if match.manual_call and match.manual_call.callee_function:
+            m_func += f" (via {match.manual_call.callee_function})"
         m_file = match.manual_call.file_path if match.manual_call else ""
         m_line = match.manual_call.line_number if match.manual_call else ""
 
         a_func = match.autogen_call.function_name if match.autogen_call else ""
+        if match.autogen_call and match.autogen_call.callee_function:
+            a_func += f" (via {match.autogen_call.callee_function})"
         a_file = match.autogen_call.file_path if match.autogen_call else ""
         a_line = match.autogen_call.line_number if match.autogen_call else ""
 
@@ -229,8 +233,10 @@ def export_to_standalone_html(result: AnalysisResult) -> str:
 
             filtered.forEach(m => {{
                 const tr = document.createElement('tr');
-                const mFunc = m.manual_call ? `${{m.manual_call.function_name}}() <br><small style="color:#64748b">${{m.manual_call.file_path}}:${{m.manual_call.line_number}}</small>` : '<em>Non présent</em>';
-                const aFunc = m.autogen_call ? `${{m.autogen_call.function_name}}() <br><small style="color:#64748b">${{m.autogen_call.file_path}}:${{m.autogen_call.line_number}}</small>` : '<em>Non généré</em>';
+                const mVia = m.manual_call && m.manual_call.callee_function ? ` <small style="color:#c084fc">(via ${{m.manual_call.callee_function}})</small>` : '';
+                const mFunc = m.manual_call ? `${{m.manual_call.function_name}}()${{mVia}} <br><small style="color:#64748b">${{m.manual_call.file_path}}:${{m.manual_call.line_number}}</small>` : '<em>Non présent</em>';
+                const aVia = m.autogen_call && m.autogen_call.callee_function ? ` <small style="color:#c084fc">(via ${{m.autogen_call.callee_function}})</small>` : '';
+                const aFunc = m.autogen_call ? `${{m.autogen_call.function_name}}()${{aVia}} <br><small style="color:#64748b">${{m.autogen_call.file_path}}:${{m.autogen_call.line_number}}</small>` : '<em>Non généré</em>';
 
                 let statusBadge = '';
                 if (m.status === 'MATCHED') {{

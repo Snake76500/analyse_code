@@ -12,6 +12,7 @@ L'outil analyse le code source Python (AST) des deux microservices sans exécuti
   - Détecte les **appels clients sortants** (`requests.*`, `httpx.*`, `aiohttp`, sessions, SDK clients générés `ApiClient`).
   - Détecte les **routes serveurs entrantes** (`@router.get`, `@app.post`, Flask `@app.route`, etc.).
   - Résout les f-strings, variables locales d'URL (`url = f"{BASE_URL}/..."`) et constantes de configuration.
+  - **Résolution du Graphe d'Appels (Fonctions Parentes)** : lorsqu'une fonction interne contenant l'endpoint est appelée par une fonction parente, l'outil sélectionne automatiquement la fonction parente (avec ses paramètres métier de haut niveau) pour l'analyse de compatibilité.
 - **Normalisation d'Endpoints Avancée** :
   - Harmonise les paramètres d'URL : `{id}`, `{user_id}`, `<int:id>`, `:id` ➔ `{PARAM}`.
   - Élimine les préfixes de versions ou de base URL (`/api/v1/users` ➔ `/users`).

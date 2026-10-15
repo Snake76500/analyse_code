@@ -14,11 +14,18 @@ class ManualServiceClient:
         self.url = BASE_URL
         self.headers = {"Authorization": f"Bearer {api_key}"}
 
-    def get_product_views(self, product_id: int, view_id: str) -> Dict[str, Any]:
-        """Fetch view analytics for a product with self.url prefix."""
+    def _request_product_views(self, product_id: int, view_id: str) -> Dict[str, Any]:
+        """Low-level internal call containing the endpoint."""
         url = f"/{self.url}/products/{product_id}/views/{view_id}"
         response = requests.get(url, headers=self.headers)
         return response.json()
+
+    def get_product_views(self, product_id: int, view_id: str, format: str = "json", include_metrics: bool = True) -> Dict[str, Any]:
+        """Public parent function calling _request_product_views."""
+        data = self._request_product_views(product_id, view_id)
+        if include_metrics:
+            data["format"] = format
+        return data
 
     def get_user_profile(self, user_id: int, include_billing: bool = False) -> Dict[str, Any]:
         """Fetch user profile with optional billing details."""

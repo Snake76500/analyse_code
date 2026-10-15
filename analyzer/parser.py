@@ -1,13 +1,43 @@
 """
 Python AST parser to detect HTTP client calls and server routes in microservices.
+Supports caller graph resolution: if an endpoint function is called by a parent function,
+the parent function is chosen for compatibility analysis.
 """
 import ast
 import os
-from typing import List, Dict, Any, Optional
+import copy
+from dataclasses import dataclass
+from typing import List, Dict, Any, Optional, Set, Tuple
 from .models import ParameterInfo, EndpointCall
 from .normalizer import normalize_endpoint, normalize_method, extract_path_params
 
 HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+
+EXCLUDED_CALL_NAMES = {
+    "get", "post", "put", "delete", "patch", "head", "options", "request",
+    "_request", "call_api", "_call_api", "send_request", "_send_request",
+    "json", "text", "content", "headers", "status_code", "raise_for_status",
+    "append", "extend", "insert", "remove", "pop", "clear", "index", "count",
+    "sort", "reverse", "copy", "items", "keys", "values", "update", "split",
+    "strip", "lstrip", "rstrip", "lower", "upper", "replace", "format",
+    "startswith", "endswith", "join", "find", "len", "print", "range", "enumerate",
+    "isinstance", "issubclass", "int", "str", "float", "bool", "dict", "list", "set",
+    "tuple", "super", "open", "read", "write", "close"
+}
+
+@dataclass
+class ParsedFunction:
+    name: str
+    class_name: Optional[str]
+    file_path: str
+    line_number: int
+    end_line_number: int
+    params: List[ParameterInfo]
+    code_snippet: str
+    docstring: Optional[str]
+    direct_endpoints: List[EndpointCall]
+    called_names: Set[str]
+
 
 class CodeVisitor(ast.NodeVisitor):
     def __init__(self, file_path: str, source_code: str):
@@ -15,7 +45,9 @@ class CodeVisitor(ast.NodeVisitor):
         self.source_code = source_code
         self.source_lines = source_code.splitlines()
         self.endpoints: List[EndpointCall] = []
+        self.parsed_functions: List[ParsedFunction] = []
         self.module_constants: Dict[str, str] = {}
+        self.current_class: Optional[str] = None
 
     def _get_snippet(self, start_line: int, end_line: int) -> str:
         if not self.source_lines:
@@ -136,6 +168,16 @@ class CodeVisitor(ast.NodeVisitor):
             keys.append(node.id)
         return keys
 
+    def _extract_called_names(self, func_node: ast.FunctionDef) -> Set[str]:
+        names = set()
+        for node in ast.walk(func_node):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name):
+                    names.add(node.func.id)
+                elif isinstance(node.func, ast.Attribute):
+                    names.add(node.func.attr)
+        return names
+
     def visit_Assign(self, node: ast.Assign):
         for target in node.targets:
             if isinstance(target, ast.Name):
@@ -144,8 +186,13 @@ class CodeVisitor(ast.NodeVisitor):
                     self.module_constants[target.id] = str_val
         self.generic_visit(node)
 
+    def visit_ClassDef(self, node: ast.ClassDef):
+        old_class = self.current_class
+        self.current_class = node.name
+        self.generic_visit(node)
+        self.current_class = old_class
+
     def _check_server_decorators(self, node: ast.FunctionDef) -> Optional[EndpointCall]:
-        """Check if function is decorated as a FastAPI/Flask route."""
         for decorator in node.decorator_list:
             method = "GET"
             path = ""
@@ -210,7 +257,6 @@ class CodeVisitor(ast.NodeVisitor):
         return None
 
     def _check_client_calls_in_function(self, func_node: ast.FunctionDef) -> List[EndpointCall]:
-        """Detect HTTP client calls inside the function body."""
         client_calls = []
         fn_params = self._extract_function_params(func_node)
         local_vars: Dict[str, ast.AST] = {}
@@ -292,26 +338,175 @@ class CodeVisitor(ast.NodeVisitor):
         return client_calls
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
+        direct_eps = []
         route = self._check_server_decorators(node)
         if route:
-            self.endpoints.append(route)
+            direct_eps.append(route)
 
         calls = self._check_client_calls_in_function(node)
         for c in calls:
-            self.endpoints.append(c)
+            direct_eps.append(c)
+
+        called_names = self._extract_called_names(node)
+
+        parsed_fn = ParsedFunction(
+            name=node.name,
+            class_name=self.current_class,
+            file_path=self.file_path,
+            line_number=node.lineno,
+            end_line_number=getattr(node, "end_lineno", node.lineno),
+            params=self._extract_function_params(node),
+            code_snippet=self._get_snippet(node.lineno, getattr(node, "end_lineno", node.lineno)),
+            docstring=ast.get_docstring(node),
+            direct_endpoints=direct_eps,
+            called_names=called_names
+        )
+        self.parsed_functions.append(parsed_fn)
+        self.endpoints.extend(direct_eps)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
-        route = self._check_server_decorators(node)
+        direct_eps = []
+        route = self._check_server_decorators(node)  # type: ignore
         if route:
-            self.endpoints.append(route)
+            direct_eps.append(route)
 
-        calls = self._check_client_calls_in_function(node)
+        calls = self._check_client_calls_in_function(node)  # type: ignore
         for c in calls:
-            self.endpoints.append(c)
+            direct_eps.append(c)
+
+        called_names = self._extract_called_names(node)  # type: ignore
+
+        parsed_fn = ParsedFunction(
+            name=node.name,
+            class_name=self.current_class,
+            file_path=self.file_path,
+            line_number=node.lineno,
+            end_line_number=getattr(node, "end_lineno", node.lineno),
+            params=self._extract_function_params(node),  # type: ignore
+            code_snippet=self._get_snippet(node.lineno, getattr(node, "end_lineno", node.lineno)),
+            docstring=ast.get_docstring(node),
+            direct_endpoints=direct_eps,
+            called_names=called_names
+        )
+        self.parsed_functions.append(parsed_fn)
+        self.endpoints.extend(direct_eps)
+
+
+def find_top_callers(
+    target_fn: ParsedFunction, 
+    all_functions: List[ParsedFunction], 
+    chain: Optional[List[str]] = None
+) -> List[Tuple[ParsedFunction, List[str]]]:
+    """
+    Recursively find top-most parent function(s) calling target_fn.
+    Returns list of (top_parent_function, call_chain).
+    """
+    if chain is None:
+        chain = [target_fn.name]
+
+    candidates = []
+    for f in all_functions:
+        if f.name == target_fn.name:
+            continue
+        if f.name in chain:
+            continue
+        if target_fn.name in EXCLUDED_CALL_NAMES:
+            continue
+        if target_fn.name in f.called_names:
+            candidates.append(f)
+
+    if not candidates:
+        if len(chain) > 1:
+            return [(target_fn, chain)]
+        return []
+
+    same_class = [c for c in candidates if c.file_path == target_fn.file_path and c.class_name == target_fn.class_name]
+    same_file = [c for c in candidates if c.file_path == target_fn.file_path]
+
+    if same_class:
+        active = same_class
+    elif same_file:
+        active = same_file
+    else:
+        active = candidates
+
+    top_callers = []
+    for caller in active:
+        new_chain = [caller.name] + chain
+        higher = find_top_callers(caller, all_functions, new_chain)
+        if higher:
+            top_callers.extend(higher)
+        else:
+            top_callers.append((caller, new_chain))
+
+    return top_callers
+
+
+def resolve_parent_callers(all_functions: List[ParsedFunction]) -> List[EndpointCall]:
+    """
+    If an endpoint function is called by a parent function,
+    use the parent function instead for compatibility analysis.
+    """
+    final_endpoints: List[EndpointCall] = []
+    seen = set()
+
+    for fn in all_functions:
+        if not fn.direct_endpoints:
+            continue
+
+        top_callers = find_top_callers(fn, all_functions)
+        if top_callers:
+            for caller, chain in top_callers:
+                for ep in fn.direct_endpoints:
+                    key = (caller.name, caller.file_path, ep.http_method, ep.normalized_endpoint)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    resolved_params = []
+                    for p in caller.params:
+                        p_copy = copy.copy(p)
+                        if p_copy.name in ep.path_params:
+                            p_copy.kind = "path"
+                        elif p_copy.type_annotation and any(b in p_copy.type_annotation.lower() for b in ["model", "schema", "request", "payload", "body"]):
+                            p_copy.kind = "body"
+                        else:
+                            p_copy.kind = "query"
+                        resolved_params.append(p_copy)
+
+                    resolved_ep = EndpointCall(
+                        function_name=caller.name,
+                        file_path=caller.file_path,
+                        line_number=caller.line_number,
+                        end_line_number=caller.end_line_number,
+                        kind=ep.kind,
+                        http_method=ep.http_method,
+                        raw_endpoint=ep.raw_endpoint,
+                        normalized_endpoint=ep.normalized_endpoint,
+                        function_params=resolved_params,
+                        path_params=ep.path_params,
+                        query_params=ep.query_params,
+                        body_params=ep.body_params,
+                        headers=ep.headers,
+                        code_snippet=caller.code_snippet,
+                        docstring=caller.docstring,
+                        callee_function=fn.name,
+                        caller_chain=chain
+                    )
+                    final_endpoints.append(resolved_ep)
+        else:
+            for ep in fn.direct_endpoints:
+                key = (fn.name, fn.file_path, ep.http_method, ep.normalized_endpoint)
+                if key in seen:
+                    continue
+                seen.add(key)
+                final_endpoints.append(ep)
+
+    return final_endpoints
 
 
 def parse_python_file(file_path: str, root_dir: str = "") -> List[EndpointCall]:
-    """Parse a single Python file and extract all endpoint calls/routes."""
+    """Parse a single Python file and resolve caller hierarchy."""
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             code = f.read()
@@ -320,20 +515,21 @@ def parse_python_file(file_path: str, root_dir: str = "") -> List[EndpointCall]:
         rel_path = os.path.relpath(file_path, root_dir) if root_dir else file_path
         visitor = CodeVisitor(rel_path, code)
         visitor.visit(tree)
-        return visitor.endpoints
+        return resolve_parent_callers(visitor.parsed_functions)
     except Exception as e:
         print(f"Warning: Could not parse {file_path}: {e}")
         return []
 
 
 def parse_service_directory(dir_path: str) -> List[EndpointCall]:
-    """Recursively parse all Python files in a directory."""
-    all_endpoints: List[EndpointCall] = []
+    """Recursively parse all Python files in a directory and resolve caller hierarchy."""
     if not os.path.exists(dir_path):
         return []
 
     if os.path.isfile(dir_path):
         return parse_python_file(dir_path, os.path.dirname(dir_path))
+
+    all_parsed_functions: List[ParsedFunction] = []
 
     for root, _, files in os.walk(dir_path):
         if any(skip in root for skip in ["__pycache__", ".venv", "venv", ".git", ".pytest_cache"]):
@@ -341,15 +537,23 @@ def parse_service_directory(dir_path: str) -> List[EndpointCall]:
         for file in files:
             if file.endswith(".py"):
                 full_path = os.path.join(root, file)
-                endpoints = parse_python_file(full_path, dir_path)
-                all_endpoints.extend(endpoints)
+                try:
+                    with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                        code = f.read()
+                    tree = ast.parse(code, filename=full_path)
+                    rel_path = os.path.relpath(full_path, dir_path)
+                    visitor = CodeVisitor(rel_path, code)
+                    visitor.visit(tree)
+                    all_parsed_functions.extend(visitor.parsed_functions)
+                except Exception as e:
+                    print(f"Warning: Could not parse {full_path}: {e}")
 
-    return all_endpoints
+    return resolve_parent_callers(all_parsed_functions)
 
 
 def parse_files_in_memory(file_list: List[Dict[str, str]]) -> List[EndpointCall]:
-    """Parse a list of virtual files: [{'path': '...', 'content': '...'}]"""
-    all_endpoints: List[EndpointCall] = []
+    """Parse a list of virtual files and resolve caller hierarchy."""
+    all_parsed_functions: List[ParsedFunction] = []
     for item in file_list:
         path = item.get("path", "")
         content = item.get("content", "")
@@ -358,7 +562,8 @@ def parse_files_in_memory(file_list: List[Dict[str, str]]) -> List[EndpointCall]
                 tree = ast.parse(content, filename=path)
                 visitor = CodeVisitor(path, content)
                 visitor.visit(tree)
-                all_endpoints.extend(visitor.endpoints)
+                all_parsed_functions.extend(visitor.parsed_functions)
             except Exception as e:
                 print(f"Warning: Could not parse in-memory file {path}: {e}")
-    return all_endpoints
+
+    return resolve_parent_callers(all_parsed_functions)
