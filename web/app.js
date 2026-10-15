@@ -552,12 +552,11 @@ window.openExampleModal = function(matchId) {
     const funcName = match.autogen_call ? match.autogen_call.function_name : ex.function_name;
     elements.exampleModalHeading.textContent = `Exemple d'appel : ${funcName}()`;
 
-    const depFile = ex.dependency_file || (appState.result.dependency_file ? escapeHtml(appState.result.dependency_file) : null);
-    if (depFile) {
-        elements.exampleModalDepFile.textContent = `📦 Fichier source: ${depFile}`;
+    if (ex.dependency_file) {
+        elements.exampleModalDepFile.textContent = `📦 Dépendance liée: ${escapeHtml(ex.dependency_file)}`;
         elements.exampleModalDepFile.style.display = 'inline-block';
     } else {
-        elements.exampleModalDepFile.textContent = `⚙️ Déclaration par défaut`;
+        elements.exampleModalDepFile.textContent = `⚙️ Aucun fichier _dependency homonyme`;
         elements.exampleModalDepFile.style.display = 'inline-block';
     }
 

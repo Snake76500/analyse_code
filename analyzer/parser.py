@@ -568,7 +568,7 @@ def parse_service_directory(dir_path: str, resolve_parents: bool = True) -> List
         if any(skip in root for skip in ["__pycache__", ".venv", "venv", ".git", ".pytest_cache"]):
             continue
         for file in files:
-            if file.endswith(".py"):
+            if file.endswith(".py") and not file.endswith("_dependency.py") and not file.endswith("_dependencies.py"):
                 full_path = os.path.join(root, file)
                 try:
                     with open(full_path, "r", encoding="utf-8", errors="replace") as f:
@@ -592,7 +592,7 @@ def parse_files_in_memory(file_list: List[Dict[str, str]], resolve_parents: bool
     for item in file_list:
         path = item.get("path", "")
         content = item.get("content", "")
-        if path.endswith(".py") and content:
+        if path.endswith(".py") and not path.endswith("_dependency.py") and not path.endswith("_dependencies.py") and content:
             try:
                 tree = ast.parse(content, filename=path)
                 visitor = CodeVisitor(path, content)

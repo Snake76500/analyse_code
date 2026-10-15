@@ -31,6 +31,115 @@ class DependencyContext:
     dependency_classes: List[str] = field(default_factory=list)
 
 
+def extract_service_stem_from_dependency_path(file_path: str) -> Optional[str]:
+    """
+    Extract the homonym target service stem from a dependency file path.
+    Example:
+      'fichiera_dependency.py' -> 'fichiera'
+      'controllers/users_dependency.py' -> 'users'
+      'service_dependency.py' -> 'service'
+    """
+    if not file_path:
+        return None
+    base = os.path.basename(file_path)
+    if not base.endswith(".py"):
+        return None
+    name_without_ext = base[:-3]
+    if name_without_ext.endswith("_dependency"):
+        return name_without_ext[:-len("_dependency")]
+    if name_without_ext.endswith("_dependencies"):
+        return name_without_ext[:-len("_dependencies")]
+    if name_without_ext.endswith("-dependency"):
+        return name_without_ext[:-len("-dependency")]
+    if name_without_ext.endswith("-dependencies"):
+        return name_without_ext[:-len("-dependencies")]
+    return None
+
+
+def build_dependency_registry_from_directory(dir_path: str) -> Dict[str, DependencyContext]:
+    """
+    Discover and parse all *_dependency.py files in a directory.
+    Maps homonym_stem (lower-cased) -> DependencyContext.
+    Enforces strict 1-to-1 homonym binding:
+    fichiera.py is linked ONLY to fichiera_dependency.py.
+    """
+    registry: Dict[str, DependencyContext] = {}
+    if not os.path.exists(dir_path):
+        return registry
+
+    if os.path.isfile(dir_path):
+        stem = extract_service_stem_from_dependency_path(dir_path)
+        if stem:
+            ctx = parse_dependency_file(dir_path)
+            if ctx:
+                registry[stem.lower()] = ctx
+        return registry
+
+    for root, _, files in os.walk(dir_path):
+        if any(skip in root for skip in ["__pycache__", ".venv", "venv", ".git"]):
+            continue
+        for file in files:
+            if file.endswith(".py"):
+                stem = extract_service_stem_from_dependency_path(file)
+                if stem:
+                    full_path = os.path.join(root, file)
+                    ctx = parse_dependency_file(full_path)
+                    if ctx:
+                        registry[stem.lower()] = ctx
+                        # Also key by relative path stem
+                        rel_path = os.path.relpath(full_path, dir_path)
+                        rel_stem = extract_service_stem_from_dependency_path(rel_path)
+                        if rel_stem:
+                            registry[rel_stem.lower()] = ctx
+
+    return registry
+
+
+def build_dependency_registry_from_memory(file_list: List[Dict[str, str]]) -> Dict[str, DependencyContext]:
+    """
+    Discover and parse all *_dependency.py files in an in-memory virtual file list.
+    Maps homonym_stem (lower-cased) -> DependencyContext.
+    """
+    registry: Dict[str, DependencyContext] = {}
+    for item in file_list:
+        path = item.get("path", "")
+        content = item.get("content", "")
+        if path.endswith(".py") and content:
+            stem = extract_service_stem_from_dependency_path(path)
+            if stem:
+                ctx = parse_dependency_content(content, path)
+                registry[stem.lower()] = ctx
+    return registry
+
+
+def get_homonym_dependency(
+    source_file_path: Optional[str],
+    registry: Dict[str, DependencyContext]
+) -> Optional[DependencyContext]:
+    """
+    Retrieve the dependency context uniquely linked to its homonym service file.
+    Rule: fichiera.py can ONLY be linked to fichiera_dependency.py.
+    """
+    if not source_file_path or not registry:
+        return None
+
+    # Base stem from the service file: e.g. "fichiera.py" -> "fichiera"
+    base_file = os.path.basename(source_file_path)
+    stem = os.path.splitext(base_file)[0].lower()
+
+    if stem in registry:
+        return registry[stem]
+
+    # Check relative path stem if available (e.g. "controllers/fichiera")
+    norm_path = os.path.normpath(source_file_path).replace("\\", "/")
+    rel_stem = os.path.splitext(norm_path)[0].lower()
+    if rel_stem in registry:
+        return registry[rel_stem]
+
+    # No homonym dependency file exists for this service file
+    return None
+
+
 def find_dependency_file(dir_path: str) -> Optional[str]:
     """Find a Python file containing or ending with '_dependency' in dir_path."""
     if not os.path.exists(dir_path):
