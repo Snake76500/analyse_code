@@ -16,7 +16,8 @@ from analyzer.matcher import match_microservices
 from analyzer.dependency_parser import (
     find_dependency_in_memory,
     build_dependency_registry_from_memory,
-    build_dependency_registry_from_directory
+    build_dependency_registry_from_directory,
+    build_class_method_index
 )
 from analyzer.exporter import export_to_json, export_to_csv, export_to_standalone_html
 from migrator.engine import CodeMigrationEngine
@@ -145,12 +146,14 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
             autogen_resolve = payload.get("autogen_resolve_parents", True)
 
             dep_registry = None
+            autogen_method_index = None
             if manual_files and autogen_files:
                 manual_calls = parse_files_in_memory(manual_files, resolve_parents=manual_resolve)
                 autogen_calls = parse_files_in_memory(autogen_files, resolve_parents=autogen_resolve)
                 manual_label = "Fichiers manuels importés"
                 autogen_label = "Fichiers autogénérés importés"
                 dep_registry = build_dependency_registry_from_memory(autogen_files)
+                autogen_method_index = build_class_method_index(file_list=autogen_files, calls=autogen_calls)
             elif manual_path and autogen_path:
                 if not os.path.exists(manual_path):
                     self._error(f"Le chemin manuel '{manual_path}' est introuvable sur le serveur.")
@@ -163,6 +166,7 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
                 manual_label = manual_path
                 autogen_label = autogen_path
                 dep_registry = build_dependency_registry_from_directory(autogen_path)
+                autogen_method_index = build_class_method_index(dir_path=autogen_path, calls=autogen_calls)
             else:
                 self._error("Veuillez renseigner les chemins des deux microservices ou importer leurs fichiers.")
                 return
@@ -172,7 +176,8 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
                 autogen_calls,
                 manual_label,
                 autogen_label,
-                dependency_registry=dep_registry
+                dependency_registry=dep_registry,
+                class_method_index=autogen_method_index
             )
 
             if parsed.path == "/api/analyze":
