@@ -62,6 +62,10 @@ def main():
         default=False,
         help="Autoriser le croisement d'endpoints entre fichiers de noms différents (désactivé par défaut lors d'analyses de répertoires)."
     )
+    parser.add_argument(
+        "--dependency", "-d",
+        help="Chemin explicite vers le fichier de déclaration de dépendance (*_dependency.py)."
+    )
 
     args = parser.parse_args()
 
@@ -91,8 +95,12 @@ def main():
         autogen_calls,
         args.manual,
         args.autogen,
-        strict_file_matching=strict_files
+        strict_file_matching=strict_files,
+        dependency_file_path=args.dependency
     )
+
+    if result.dependency_file:
+        print(f"📦 Dépendances détectées via : {result.dependency_file}")
 
     print("\n" + "=" * 60)
     print(f"📊 RÉSULTATS DE L'ANALYSE")

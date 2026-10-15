@@ -36,10 +36,12 @@ class EndpointCall:
     docstring: Optional[str] = None
     callee_function: Optional[str] = None
     caller_chain: List[str] = field(default_factory=list)
+    class_name: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "function_name": self.function_name,
+            "class_name": self.class_name,
             "file_path": self.file_path,
             "line_number": self.line_number,
             "end_line_number": self.end_line_number,
@@ -90,6 +92,7 @@ class EndpointMatch:
     autogen_call: Optional[EndpointCall] = None
     param_diffs: List[ParameterDiff] = field(default_factory=list)
     summary: str = ""
+    call_example: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -103,7 +106,8 @@ class EndpointMatch:
             "manual_call": self.manual_call.to_dict() if self.manual_call else None,
             "autogen_call": self.autogen_call.to_dict() if self.autogen_call else None,
             "param_diffs": [d.to_dict() for d in self.param_diffs],
-            "summary": self.summary
+            "summary": self.summary,
+            "call_example": self.call_example
         }
 
 
@@ -119,6 +123,7 @@ class AnalysisResult:
     divergent_count: int
     identical_count: int
     compatible_count: int
+    dependency_file: Optional[str] = None
     matches: List[EndpointMatch] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -133,5 +138,6 @@ class AnalysisResult:
             "divergent_count": self.divergent_count,
             "identical_count": self.identical_count,
             "compatible_count": self.compatible_count,
+            "dependency_file": self.dependency_file,
             "matches": [m.to_dict() for m in self.matches]
         }

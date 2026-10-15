@@ -61,6 +61,19 @@ const elements = {
     modalManualCode: document.getElementById('modalManualCode'),
     modalAutogenCode: document.getElementById('modalAutogenCode'),
 
+    // Example Code & Dependency Modal
+    callExampleModal: document.getElementById('callExampleModal'),
+    exampleModalCloseBtn: document.getElementById('exampleModalCloseBtn'),
+    exampleModalEndpointBadge: document.getElementById('exampleModalEndpointBadge'),
+    exampleModalHeading: document.getElementById('exampleModalHeading'),
+    exampleModalBanner: document.getElementById('exampleModalBanner'),
+    exampleModalDepFile: document.getElementById('exampleModalDepFile'),
+    exampleModalImports: document.getElementById('exampleModalImports'),
+    exampleModalInstantiation: document.getElementById('exampleModalInstantiation'),
+    exampleModalCall: document.getElementById('exampleModalCall'),
+    exampleModalFullCode: document.getElementById('exampleModalFullCode'),
+    btnCopyExampleCode: document.getElementById('btnCopyExampleCode'),
+
     // Tabs
     tabMatrix: document.getElementById('tabMatrix'),
     tabMigrate: document.getElementById('tabMigrate'),
@@ -152,6 +165,20 @@ function setupEventListeners() {
             elements.diffModal.close();
         }
     });
+
+    if (elements.exampleModalCloseBtn) {
+        elements.exampleModalCloseBtn.addEventListener('click', () => {
+            elements.callExampleModal.close();
+        });
+    }
+
+    if (elements.callExampleModal) {
+        elements.callExampleModal.addEventListener('click', (e) => {
+            if (e.target === elements.callExampleModal) {
+                elements.callExampleModal.close();
+            }
+        });
+    }
 
     elements.manualFolderInput.addEventListener('change', (e) => handleFileSelection(e, 'manual'));
     elements.autogenFolderInput.addEventListener('change', (e) => handleFileSelection(e, 'autogen'));
@@ -414,10 +441,20 @@ function renderMatrixTable() {
             statusHtml = `<span class="status-pill AUTOGEN_ONLY">Autogénéré seul</span>`;
         }
 
-        const actionHtml = `
-            <button class="btn btn-outline btn-sm" onclick="openDiffModal('${m.id}')">
-                Diff
+        const hasAutogen = !!m.autogen_call && !!m.call_example;
+        const codeBtnHtml = hasAutogen ? `
+            <button class="btn btn-outline btn-sm btn-example-code" onclick="openExampleModal('${m.id}')" title="Exemple d'appel & imports (selon _dependency)">
+                ⚡ Code
             </button>
+        ` : '';
+
+        const actionHtml = `
+            <div class="action-buttons-group">
+                <button class="btn btn-outline btn-sm" onclick="openDiffModal('${m.id}')" title="Voir les différences de paramètres">
+                    Diff
+                </button>
+                ${codeBtnHtml}
+            </div>
         `;
 
         tr.innerHTML = `
@@ -498,6 +535,55 @@ window.openDiffModal = function(matchId) {
     elements.modalAutogenCode.textContent = match.autogen_call ? match.autogen_call.code_snippet : '# Aucun code autogénéré disponible pour cet endpoint';
 
     elements.diffModal.showModal();
+};
+
+window.openExampleModal = function(matchId) {
+    if (!appState.result) return;
+    const match = appState.result.matches.find(m => m.id === matchId);
+    if (!match || !match.call_example) return;
+
+    const ex = match.call_example;
+
+    elements.exampleModalEndpointBadge.innerHTML = `
+        <span class="badge-method ${match.http_method}">${match.http_method}</span>
+        <span style="font-family: var(--font-mono); font-weight: 600; margin-left: 8px;">${escapeHtml(match.normalized_endpoint)}</span>
+    `;
+
+    const funcName = match.autogen_call ? match.autogen_call.function_name : ex.function_name;
+    elements.exampleModalHeading.textContent = `Exemple d'appel : ${funcName}()`;
+
+    const depFile = ex.dependency_file || (appState.result.dependency_file ? escapeHtml(appState.result.dependency_file) : null);
+    if (depFile) {
+        elements.exampleModalDepFile.textContent = `📦 Fichier source: ${depFile}`;
+        elements.exampleModalDepFile.style.display = 'inline-block';
+    } else {
+        elements.exampleModalDepFile.textContent = `⚙️ Déclaration par défaut`;
+        elements.exampleModalDepFile.style.display = 'inline-block';
+    }
+
+    elements.exampleModalBanner.className = 'diff-summary-banner COMPATIBLE';
+    elements.exampleModalBanner.innerHTML = `Fonction autogénérée <code>${escapeHtml(funcName)}()</code> prête à l'emploi avec instanciation de la classe <code>${escapeHtml(ex.class_name)}</code>.`;
+
+    elements.exampleModalImports.textContent = (ex.imports || []).join('\n');
+    elements.exampleModalInstantiation.textContent = ex.instantiation || '';
+    elements.exampleModalCall.textContent = ex.call_snippet || '';
+    elements.exampleModalFullCode.textContent = ex.full_code || '';
+
+    elements.btnCopyExampleCode.onclick = () => {
+        navigator.clipboard.writeText(ex.full_code || '').then(() => {
+            const originalText = elements.btnCopyExampleCode.innerHTML;
+            elements.btnCopyExampleCode.innerHTML = '✓ Code copié !';
+            elements.btnCopyExampleCode.style.background = '#10b981';
+            setTimeout(() => {
+                elements.btnCopyExampleCode.innerHTML = originalText;
+                elements.btnCopyExampleCode.style.background = '';
+            }, 2000);
+        }).catch(err => {
+            console.error('Erreur lors de la copie:', err);
+        });
+    };
+
+    elements.callExampleModal.showModal();
 };
 
 async function exportCSV() {

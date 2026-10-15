@@ -1093,3 +1093,71 @@ body {
     font-weight: 600;
     display: block;
 }
+
+/* Action Buttons Group & Code Snippet Modal */
+.action-buttons-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+}
+
+.btn-example-code {
+    border-color: rgba(168, 85, 247, 0.4);
+    color: #c084fc;
+    background: rgba(168, 85, 247, 0.08);
+}
+
+.btn-example-code:hover {
+    border-color: #a855f7;
+    background: rgba(168, 85, 247, 0.18);
+    color: #f3e8ff;
+    box-shadow: 0 0 12px rgba(168, 85, 247, 0.25);
+}
+
+.section-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.section-header-row .diff-section-title {
+    margin-bottom: 0;
+}
+
+.badge-source-info {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(168, 85, 247, 0.12);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.25);
+}
+
+.code-imports {
+    background: rgba(15, 23, 42, 0.85);
+    border-left: 3px solid #38bdf8;
+    color: #7dd3fc;
+}
+
+.code-instantiation {
+    background: rgba(15, 23, 42, 0.85);
+    border-left: 3px solid #c084fc;
+    color: #e9d5ff;
+}
+
+.code-call {
+    background: rgba(15, 23, 42, 0.85);
+    border-left: 3px solid #34d399;
+    color: #a7f3d0;
+}
+
+.code-full {
+    background: rgba(10, 15, 30, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #f8fafc;
+    max-height: 350px;
+}

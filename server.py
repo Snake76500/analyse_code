@@ -13,6 +13,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 import urllib.parse
 from analyzer.parser import parse_service_directory, parse_files_in_memory
 from analyzer.matcher import match_microservices
+from analyzer.dependency_parser import find_dependency_in_memory
 from analyzer.exporter import export_to_json, export_to_csv, export_to_standalone_html
 from migrator.engine import CodeMigrationEngine
 
@@ -139,11 +140,17 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
             manual_resolve = payload.get("manual_resolve_parents", False)
             autogen_resolve = payload.get("autogen_resolve_parents", True)
 
+            dep_content = None
+            dep_path = None
             if manual_files and autogen_files:
                 manual_calls = parse_files_in_memory(manual_files, resolve_parents=manual_resolve)
                 autogen_calls = parse_files_in_memory(autogen_files, resolve_parents=autogen_resolve)
                 manual_label = "Fichiers manuels importés"
                 autogen_label = "Fichiers autogénérés importés"
+                dep_obj = find_dependency_in_memory(autogen_files)
+                if dep_obj:
+                    dep_content = dep_obj.get("content")
+                    dep_path = dep_obj.get("path")
             elif manual_path and autogen_path:
                 if not os.path.exists(manual_path):
                     self._error(f"Le chemin manuel '{manual_path}' est introuvable sur le serveur.")
@@ -159,7 +166,14 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
                 self._error("Veuillez renseigner les chemins des deux microservices ou importer leurs fichiers.")
                 return
 
-            result = match_microservices(manual_calls, autogen_calls, manual_label, autogen_label)
+            result = match_microservices(
+                manual_calls,
+                autogen_calls,
+                manual_label,
+                autogen_label,
+                dependency_content=dep_content,
+                dependency_file_path=dep_path
+            )
 
             if parsed.path == "/api/analyze":
                 self.send_response(200)

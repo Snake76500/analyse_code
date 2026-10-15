@@ -383,6 +383,54 @@
                         </div>
                     </div>
                 </div>
+        </dialog>
+
+        <!-- Function Call & Dependency Example Modal -->
+        <dialog id="callExampleModal" class="modal-dialog">
+            <div class="modal-wrapper">
+                <header class="modal-header">
+                    <div class="modal-title-group">
+                        <div class="modal-endpoint" id="exampleModalEndpointBadge"></div>
+                        <h3 class="modal-heading" id="exampleModalHeading">Exemple d'appel & Déclaration des dépendances</h3>
+                    </div>
+                    <button class="modal-close-btn" id="exampleModalCloseBtn" aria-label="Fermer la boîte de dialogue">&times;</button>
+                </header>
+
+                <div class="modal-content">
+                    <div class="diff-summary-banner" id="exampleModalBanner"></div>
+
+                    <!-- Step 1: Imports -->
+                    <div class="diff-section">
+                        <div class="section-header-row">
+                            <h4 class="diff-section-title">1. Imports nécessaires</h4>
+                            <span class="badge-source-info" id="exampleModalDepFile"></span>
+                        </div>
+                        <pre class="code-pre code-imports"><code id="exampleModalImports"></code></pre>
+                    </div>
+
+                    <!-- Step 2: Instantiation -->
+                    <div class="diff-section">
+                        <h4 class="diff-section-title">2. Instanciation de la classe (selon déclaration _dependency)</h4>
+                        <pre class="code-pre code-instantiation"><code id="exampleModalInstantiation"></code></pre>
+                    </div>
+
+                    <!-- Step 3: Function call -->
+                    <div class="diff-section">
+                        <div class="section-header-row">
+                            <h4 class="diff-section-title">3. Appel de la fonction autogénérée</h4>
+                            <button class="btn btn-primary btn-sm" id="btnCopyExampleCode">
+                                📋 Copier tout le code
+                            </button>
+                        </div>
+                        <pre class="code-pre code-call"><code id="exampleModalCall"></code></pre>
+                    </div>
+
+                    <!-- Step 4: Full Runnable Python Snippet -->
+                    <div class="diff-section">
+                        <h4 class="diff-section-title">Code Python complet prêt à l'emploi</h4>
+                        <pre class="code-pre code-full"><code id="exampleModalFullCode"></code></pre>
+                    </div>
+                </div>
             </div>
         </dialog>
     </div>

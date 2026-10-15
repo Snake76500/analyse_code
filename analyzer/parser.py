@@ -241,6 +241,7 @@ class CodeVisitor(ast.NodeVisitor):
 
                 return EndpointCall(
                     function_name=node.name,
+                    class_name=self.current_class,
                     file_path=self.file_path,
                     line_number=node.lineno,
                     end_line_number=getattr(node, "end_lineno", node.lineno),
@@ -319,6 +320,7 @@ class CodeVisitor(ast.NodeVisitor):
 
                     call_obj = EndpointCall(
                         function_name=func_node.name,
+                        class_name=self.current_class,
                         file_path=self.file_path,
                         line_number=func_node.lineno,
                         end_line_number=getattr(func_node, "end_lineno", func_node.lineno),
@@ -487,6 +489,7 @@ def resolve_parent_callers(all_functions: List[ParsedFunction]) -> List[Endpoint
 
                     resolved_ep = EndpointCall(
                         function_name=caller.name,
+                        class_name=caller.class_name,
                         file_path=caller.file_path,
                         line_number=caller.line_number,
                         end_line_number=caller.end_line_number,
