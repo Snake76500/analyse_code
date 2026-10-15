@@ -56,6 +56,12 @@ def main():
         default=False,
         help="Désactiver la résolution des fonctions parentes pour le microservice autogénéré (activé par défaut)."
     )
+    parser.add_argument(
+        "--allow-cross-file-matching",
+        action="store_true",
+        default=False,
+        help="Autoriser le croisement d'endpoints entre fichiers de noms différents (désactivé par défaut lors d'analyses de répertoires)."
+    )
 
     args = parser.parse_args()
 
@@ -78,8 +84,15 @@ def main():
     autogen_calls = parse_service_directory(args.autogen, resolve_parents=resolve_autogen)
     print(f"   ➔ {len(autogen_calls)} endpoint(s) / route(s) détecté(s).")
 
-    print("⚡ Calcul de la matrice de correspondance et analyse des paramètres...")
-    result = match_microservices(manual_calls, autogen_calls, args.manual, args.autogen)
+    strict_files = False if args.allow_cross_file_matching else None
+    print("⚡ Calcul de la matrice de correspondance (appariement strict par noms de fichiers)...")
+    result = match_microservices(
+        manual_calls,
+        autogen_calls,
+        args.manual,
+        args.autogen,
+        strict_file_matching=strict_files
+    )
 
     print("\n" + "=" * 60)
     print(f"📊 RÉSULTATS DE L'ANALYSE")
