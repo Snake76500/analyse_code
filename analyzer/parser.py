@@ -22,7 +22,8 @@ EXCLUDED_CALL_NAMES = {
     "strip", "lstrip", "rstrip", "lower", "upper", "replace", "format",
     "startswith", "endswith", "join", "find", "len", "print", "range", "enumerate",
     "isinstance", "issubclass", "int", "str", "float", "bool", "dict", "list", "set",
-    "tuple", "super", "open", "read", "write", "close"
+    "tuple", "super", "open", "read", "write", "close", "run", "execute", "main",
+    "load", "loads", "dump", "dumps"
 }
 
 @dataclass
@@ -412,6 +413,10 @@ def find_top_callers(
             continue
         if target_fn.name in EXCLUDED_CALL_NAMES:
             continue
+        if f.name.startswith("test_") or "test" in f.file_path.lower():
+            continue
+        if f.name.startswith("__") and f.name.endswith("__"):
+            continue
         if target_fn.name in f.called_names:
             candidates.append(f)
 
@@ -464,14 +469,20 @@ def resolve_parent_callers(all_functions: List[ParsedFunction]) -> List[Endpoint
                     seen.add(key)
 
                     resolved_params = []
+                    new_query = list(ep.query_params)
+                    new_body = list(ep.body_params)
                     for p in caller.params:
                         p_copy = copy.copy(p)
                         if p_copy.name in ep.path_params:
                             p_copy.kind = "path"
                         elif p_copy.type_annotation and any(b in p_copy.type_annotation.lower() for b in ["model", "schema", "request", "payload", "body"]):
                             p_copy.kind = "body"
+                            if p_copy.name not in new_body:
+                                new_body.append(p_copy.name)
                         else:
                             p_copy.kind = "query"
+                            if p_copy.name not in new_query:
+                                new_query.append(p_copy.name)
                         resolved_params.append(p_copy)
 
                     resolved_ep = EndpointCall(
@@ -485,8 +496,8 @@ def resolve_parent_callers(all_functions: List[ParsedFunction]) -> List[Endpoint
                         normalized_endpoint=ep.normalized_endpoint,
                         function_params=resolved_params,
                         path_params=ep.path_params,
-                        query_params=ep.query_params,
-                        body_params=ep.body_params,
+                        query_params=new_query,
+                        body_params=new_body,
                         headers=ep.headers,
                         code_snippet=caller.code_snippet,
                         docstring=caller.docstring,
