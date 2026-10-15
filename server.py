@@ -38,8 +38,8 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
             manual_dir = os.path.join(base_dir, "samples", "manual_service")
             autogen_dir = os.path.join(base_dir, "samples", "autogen_service")
 
-            manual_calls = parse_service_directory(manual_dir)
-            autogen_calls = parse_service_directory(autogen_dir)
+            manual_calls = parse_service_directory(manual_dir, resolve_parents=False)
+            autogen_calls = parse_service_directory(autogen_dir, resolve_parents=True)
             result = match_microservices(manual_calls, autogen_calls, manual_dir, autogen_dir)
 
             self.send_response(200)
@@ -70,10 +70,12 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
             autogen_path = payload.get("autogen_path", "").strip()
             manual_files = payload.get("manual_files", [])
             autogen_files = payload.get("autogen_files", [])
+            manual_resolve = payload.get("manual_resolve_parents", False)
+            autogen_resolve = payload.get("autogen_resolve_parents", True)
 
             if manual_files and autogen_files:
-                manual_calls = parse_files_in_memory(manual_files)
-                autogen_calls = parse_files_in_memory(autogen_files)
+                manual_calls = parse_files_in_memory(manual_files, resolve_parents=manual_resolve)
+                autogen_calls = parse_files_in_memory(autogen_files, resolve_parents=autogen_resolve)
                 manual_label = "Fichiers manuels importés"
                 autogen_label = "Fichiers autogénérés importés"
             elif manual_path and autogen_path:
@@ -83,8 +85,8 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
                 if not os.path.exists(autogen_path):
                     self._error(f"Le chemin autogénéré '{autogen_path}' est introuvable sur le serveur.")
                     return
-                manual_calls = parse_service_directory(manual_path)
-                autogen_calls = parse_service_directory(autogen_path)
+                manual_calls = parse_service_directory(manual_path, resolve_parents=manual_resolve)
+                autogen_calls = parse_service_directory(autogen_path, resolve_parents=autogen_resolve)
                 manual_label = manual_path
                 autogen_label = autogen_path
             else:

@@ -44,6 +44,18 @@ def main():
         action="store_true",
         help="Ouvrir automatiquement le rapport HTML dans le navigateur."
     )
+    parser.add_argument(
+        "--manual-resolve-parents",
+        action="store_true",
+        default=False,
+        help="Activer la résolution des fonctions parentes pour le microservice manuel (désactivé par défaut)."
+    )
+    parser.add_argument(
+        "--no-autogen-resolve-parents",
+        action="store_true",
+        default=False,
+        help="Désactiver la résolution des fonctions parentes pour le microservice autogénéré (activé par défaut)."
+    )
 
     args = parser.parse_args()
 
@@ -55,12 +67,15 @@ def main():
         print(f"Erreur : Le dossier autogénéré '{args.autogen}' n'existe pas.", file=sys.stderr)
         sys.exit(1)
 
+    resolve_manual = args.manual_resolve_parents
+    resolve_autogen = not args.no_autogen_resolve_parents
+
     print(f"🔍 Analyse du microservice manuel : {args.manual}")
-    manual_calls = parse_service_directory(args.manual)
+    manual_calls = parse_service_directory(args.manual, resolve_parents=resolve_manual)
     print(f"   ➔ {len(manual_calls)} endpoint(s) / route(s) détecté(s).")
 
     print(f"🔍 Analyse du microservice autogénéré : {args.autogen}")
-    autogen_calls = parse_service_directory(args.autogen)
+    autogen_calls = parse_service_directory(args.autogen, resolve_parents=resolve_autogen)
     print(f"   ➔ {len(autogen_calls)} endpoint(s) / route(s) détecté(s).")
 
     print("⚡ Calcul de la matrice de correspondance et analyse des paramètres...")

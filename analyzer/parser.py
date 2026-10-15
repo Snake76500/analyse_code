@@ -516,8 +516,25 @@ def resolve_parent_callers(all_functions: List[ParsedFunction]) -> List[Endpoint
     return final_endpoints
 
 
-def parse_python_file(file_path: str, root_dir: str = "") -> List[EndpointCall]:
-    """Parse a single Python file and resolve caller hierarchy."""
+def extract_direct_endpoints(all_functions: List[ParsedFunction]) -> List[EndpointCall]:
+    """
+    Directly return endpoints as declared in the functions containing them,
+    without resolving parent callers.
+    """
+    final_endpoints: List[EndpointCall] = []
+    seen = set()
+    for fn in all_functions:
+        for ep in fn.direct_endpoints:
+            key = (fn.name, fn.file_path, ep.http_method, ep.normalized_endpoint)
+            if key in seen:
+                continue
+            seen.add(key)
+            final_endpoints.append(ep)
+    return final_endpoints
+
+
+def parse_python_file(file_path: str, root_dir: str = "", resolve_parents: bool = True) -> List[EndpointCall]:
+    """Parse a single Python file. If resolve_parents is True, resolve caller hierarchy."""
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             code = f.read()
@@ -526,19 +543,21 @@ def parse_python_file(file_path: str, root_dir: str = "") -> List[EndpointCall]:
         rel_path = os.path.relpath(file_path, root_dir) if root_dir else file_path
         visitor = CodeVisitor(rel_path, code)
         visitor.visit(tree)
-        return resolve_parent_callers(visitor.parsed_functions)
+        if resolve_parents:
+            return resolve_parent_callers(visitor.parsed_functions)
+        return extract_direct_endpoints(visitor.parsed_functions)
     except Exception as e:
         print(f"Warning: Could not parse {file_path}: {e}")
         return []
 
 
-def parse_service_directory(dir_path: str) -> List[EndpointCall]:
-    """Recursively parse all Python files in a directory and resolve caller hierarchy."""
+def parse_service_directory(dir_path: str, resolve_parents: bool = True) -> List[EndpointCall]:
+    """Recursively parse all Python files in a directory. If resolve_parents is True, resolve caller hierarchy."""
     if not os.path.exists(dir_path):
         return []
 
     if os.path.isfile(dir_path):
-        return parse_python_file(dir_path, os.path.dirname(dir_path))
+        return parse_python_file(dir_path, os.path.dirname(dir_path), resolve_parents=resolve_parents)
 
     all_parsed_functions: List[ParsedFunction] = []
 
@@ -559,11 +578,13 @@ def parse_service_directory(dir_path: str) -> List[EndpointCall]:
                 except Exception as e:
                     print(f"Warning: Could not parse {full_path}: {e}")
 
-    return resolve_parent_callers(all_parsed_functions)
+    if resolve_parents:
+        return resolve_parent_callers(all_parsed_functions)
+    return extract_direct_endpoints(all_parsed_functions)
 
 
-def parse_files_in_memory(file_list: List[Dict[str, str]]) -> List[EndpointCall]:
-    """Parse a list of virtual files and resolve caller hierarchy."""
+def parse_files_in_memory(file_list: List[Dict[str, str]], resolve_parents: bool = True) -> List[EndpointCall]:
+    """Parse a list of virtual files. If resolve_parents is True, resolve caller hierarchy."""
     all_parsed_functions: List[ParsedFunction] = []
     for item in file_list:
         path = item.get("path", "")
@@ -577,4 +598,6 @@ def parse_files_in_memory(file_list: List[Dict[str, str]]) -> List[EndpointCall]
             except Exception as e:
                 print(f"Warning: Could not parse in-memory file {path}: {e}")
 
-    return resolve_parent_callers(all_parsed_functions)
+    if resolve_parents:
+        return resolve_parent_callers(all_parsed_functions)
+    return extract_direct_endpoints(all_parsed_functions)
