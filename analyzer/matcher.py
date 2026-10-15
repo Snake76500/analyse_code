@@ -268,6 +268,9 @@ def match_microservices(manual_calls: List[EndpointCall], autogen_calls: List[En
             manual_calls, autogen_calls, manual_path, autogen_path
         )
 
+    known_manual_classes: Set[str] = {m.class_name for m in manual_calls if m.class_name}
+    known_autogen_classes: Set[str] = {a.class_name for a in autogen_calls if a.class_name}
+
     for m_idx, m_call in enumerate(manual_calls):
         matched_a_idx = None
 
@@ -363,7 +366,12 @@ def match_microservices(manual_calls: List[EndpointCall], autogen_calls: List[En
                 param_diffs=diffs,
                 summary=summary,
                 call_example=generate_function_call_example(
-                    a_call, dependency_ctx=call_dep_ctx, service_root_path=autogen_path
+                    a_call,
+                    dependency_ctx=call_dep_ctx,
+                    service_root_path=autogen_path,
+                    manual_service_path=manual_path,
+                    known_manual_classes=known_manual_classes,
+                    known_autogen_classes=known_autogen_classes
                 )
             )
             matches.append(match_obj)
@@ -418,7 +426,12 @@ def match_microservices(manual_calls: List[EndpointCall], autogen_calls: List[En
                 param_diffs=diffs,
                 summary=f"Endpoint présent uniquement dans le microservice autogénéré{file_info}",
                 call_example=generate_function_call_example(
-                    a_call, dependency_ctx=call_dep_ctx, service_root_path=autogen_path
+                    a_call,
+                    dependency_ctx=call_dep_ctx,
+                    service_root_path=autogen_path,
+                    manual_service_path=manual_path,
+                    known_manual_classes=known_manual_classes,
+                    known_autogen_classes=known_autogen_classes
                 )
             )
             matches.append(match_obj)

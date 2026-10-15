@@ -6,7 +6,7 @@ import ast
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 from .models import EndpointCall, ParameterInfo
 
 
@@ -18,6 +18,9 @@ class ClassInstantiationInfo:
     instantiation_code: str
     constructor_kwargs: Dict[str, str] = field(default_factory=dict)
     source_file: str = ""
+    enclosing_class: Optional[str] = None
+    is_manual: bool = False
+    is_autogen: bool = False
 
 
 @dataclass
@@ -27,6 +30,7 @@ class DependencyContext:
     imports: List[str] = field(default_factory=list)
     import_modules: Dict[str, str] = field(default_factory=dict)  # Symbol -> "from module import Symbol"
     instantiations: Dict[str, ClassInstantiationInfo] = field(default_factory=dict)  # ClassName -> info
+    instantiations_list: List[ClassInstantiationInfo] = field(default_factory=list)
     factory_functions: Dict[str, str] = field(default_factory=dict)  # ClassName -> "get_client()"
     dependency_classes: List[str] = field(default_factory=list)
 
@@ -178,6 +182,7 @@ class DependencyFileVisitor(ast.NodeVisitor):
         self.imports: List[str] = []
         self.import_modules: Dict[str, str] = {}  # Symbol -> import line
         self.instantiations: Dict[str, ClassInstantiationInfo] = {}  # ClassName -> Info
+        self.instantiations_list: List[ClassInstantiationInfo] = []
         self.factory_functions: Dict[str, str] = {}
         self.dependency_classes: List[str] = []
 
@@ -203,15 +208,17 @@ class DependencyFileVisitor(ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef):
         self.dependency_classes.append(node.name)
-        # Inspect class body for assignments and __init__
+        # Inspect class body for assignments, __init__, and getter methods
         for item in node.body:
             if isinstance(item, ast.FunctionDef) and item.name == "__init__":
                 self._inspect_init(node.name, item)
+            elif isinstance(item, ast.FunctionDef) and item.name != "__init__":
+                self._inspect_method(node.name, item)
             elif isinstance(item, ast.AnnAssign) and isinstance(item.value, ast.Call):
-                self._inspect_call_assign(item.target, item.value)
+                self._inspect_call_assign(item.target, item.value, enclosing_class=node.name)
             elif isinstance(item, ast.Assign) and isinstance(item.value, ast.Call):
                 for target in item.targets:
-                    self._inspect_call_assign(target, item.value)
+                    self._inspect_call_assign(target, item.value, enclosing_class=node.name)
         self.generic_visit(node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
@@ -244,7 +251,25 @@ class DependencyFileVisitor(ast.NodeVisitor):
         for stmt in init_node.body:
             if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call):
                 for target in stmt.targets:
-                    self._inspect_call_assign(target, stmt.value)
+                    self._inspect_call_assign(target, stmt.value, enclosing_class=enclosing_class)
+
+    def _inspect_method(self, enclosing_class: str, func_node: ast.FunctionDef):
+        return_type = None
+        if func_node.returns:
+            try:
+                return_type = ast.unparse(func_node.returns)
+            except Exception:
+                pass
+
+        for stmt in func_node.body:
+            if isinstance(stmt, ast.Return):
+                if isinstance(stmt.value, ast.Call):
+                    func_name = self._get_call_name(stmt.value)
+                    target_class = return_type or func_name
+                    if target_class:
+                        self.factory_functions[target_class] = f"{enclosing_class}().{func_node.name}()"
+                elif isinstance(stmt.value, ast.Attribute) and return_type:
+                    self.factory_functions[return_type] = f"{enclosing_class}().{func_node.name}()"
 
     def _get_call_name(self, call_node: ast.Call) -> str:
         try:
@@ -252,7 +277,7 @@ class DependencyFileVisitor(ast.NodeVisitor):
         except Exception:
             return ""
 
-    def _inspect_call_assign(self, target_node: ast.AST, call_node: ast.Call):
+    def _inspect_call_assign(self, target_node: ast.AST, call_node: ast.Call, enclosing_class: str = ""):
         class_name = self._get_call_name(call_node)
         # Handle self.client or client
         var_name = "client"
@@ -283,18 +308,27 @@ class DependencyFileVisitor(ast.NodeVisitor):
         if not import_line:
             # Fallback if class is imported
             for sym, imp in self.import_modules.items():
-                if sym == class_name:
+                if sym == class_name or sym == class_name.split(".")[-1]:
                     import_line = imp
                     break
 
-        self.instantiations[class_name] = ClassInstantiationInfo(
+        lower_check = f"{class_name} {var_name} {import_line} {enclosing_class}".lower()
+        is_manual = any(kw in lower_check for kw in ["manual", "legacy", "old", "v1", "ancient", "deprecated"])
+        is_autogen = any(kw in lower_check for kw in ["autogen", "auto", "openapi", "swagger", "generated"])
+
+        info = ClassInstantiationInfo(
             class_name=class_name,
             variable_name=var_name,
             import_line=import_line,
             instantiation_code=f"{var_name} = {call_code}",
             constructor_kwargs=kwargs,
-            source_file=self.file_path
+            source_file=self.file_path,
+            enclosing_class=enclosing_class,
+            is_manual=is_manual,
+            is_autogen=is_autogen
         )
+        self.instantiations[class_name] = info
+        self.instantiations_list.append(info)
 
 
 def parse_dependency_content(content: str, file_path: str = "dependency.py") -> DependencyContext:
@@ -308,6 +342,7 @@ def parse_dependency_content(content: str, file_path: str = "dependency.py") -> 
         ctx.imports = visitor.imports
         ctx.import_modules = visitor.import_modules
         ctx.instantiations = visitor.instantiations
+        ctx.instantiations_list = visitor.instantiations_list
         ctx.factory_functions = visitor.factory_functions
         ctx.dependency_classes = visitor.dependency_classes
     except Exception as e:
@@ -395,40 +430,149 @@ def format_example_value(param: ParameterInfo) -> str:
     return f'"{name}_sample"'
 
 
+def is_manual_dependency(info: ClassInstantiationInfo, manual_service_path: str = "") -> bool:
+    """
+    Check if a dependency instantiation belongs to the manual microservice.
+    """
+    if info.is_manual:
+        return True
+
+    lower_class = info.class_name.lower()
+    lower_var = info.variable_name.lower()
+    lower_import = (info.import_line or "").lower()
+
+    for kw in ["manual", "legacy", "old", "v1", "ancient", "deprecated"]:
+        if kw in lower_class or kw in lower_var or kw in lower_import:
+            return True
+
+    if manual_service_path:
+        base_manual = os.path.basename(os.path.normpath(manual_service_path)).lower()
+        if base_manual and base_manual in lower_import:
+            return True
+
+    return False
+
+
+def is_autogen_dependency(
+    info: ClassInstantiationInfo,
+    target_class_name: Optional[str] = None,
+    target_function_name: Optional[str] = None,
+    service_file_stem: Optional[str] = None,
+    autogen_service_path: str = ""
+) -> bool:
+    """
+    Check if a dependency instantiation belongs to the autogenerated microservice.
+    """
+    if is_manual_dependency(info, ""):
+        return False
+
+    if info.is_autogen:
+        return True
+
+    lower_class = info.class_name.lower()
+    lower_var = info.variable_name.lower()
+    lower_import = (info.import_line or "").lower()
+
+    if target_class_name:
+        target_lower = target_class_name.lower()
+        if lower_class == target_lower or lower_class.split(".")[-1] == target_lower:
+            return True
+
+    for kw in ["autogen", "auto", "openapi", "swagger", "generated"]:
+        if kw in lower_class or kw in lower_var or kw in lower_import:
+            return True
+
+    if service_file_stem and service_file_stem.lower() in lower_import:
+        return True
+
+    if autogen_service_path:
+        base_autogen = os.path.basename(os.path.normpath(autogen_service_path)).lower()
+        if base_autogen and base_autogen in lower_import:
+            return True
+
+    return False
+
+
 def generate_function_call_example(
     call: EndpointCall,
     dependency_ctx: Optional[DependencyContext] = None,
-    service_root_path: str = ""
+    service_root_path: str = "",
+    manual_service_path: str = "",
+    known_manual_classes: Optional[Set[str]] = None,
+    known_autogen_classes: Optional[Set[str]] = None
 ) -> Dict[str, Any]:
     """
-    Generate an example of function call with all required imports and class instantiation
-    based on the dependency declaration file.
+    Generate an example of function call strictly using the dependencies
+    of the autogenerated microservice (never manual microservice dependencies).
     """
     func_name = call.function_name
     class_name = call.class_name or "AutogenApiClient"
     file_path = call.file_path or "service.py"
     dep_file = dependency_ctx.file_path if dependency_ctx else None
 
-    # 1. Determine Import Statements
+    known_manual = set(known_manual_classes or [])
+    known_autogen = set(known_autogen_classes or [])
+
+    # 1. Determine Autogen Dependency Info
     imports = []
     class_instantiation = ""
     var_name = "client"
+    chosen_info: Optional[ClassInstantiationInfo] = None
 
-    if dependency_ctx and class_name in dependency_ctx.instantiations:
-        info = dependency_ctx.instantiations[class_name]
-        var_name = info.variable_name or "client"
-        if info.import_line:
-            imports.append(info.import_line)
-        class_instantiation = info.instantiation_code
-    elif dependency_ctx and dependency_ctx.instantiations:
-        # Pick the first available instantiation if class name differs slightly
-        first_info = next(iter(dependency_ctx.instantiations.values()))
-        var_name = first_info.variable_name or "client"
-        if first_info.import_line:
-            imports.append(first_info.import_line)
-        class_instantiation = first_info.instantiation_code
+    if dependency_ctx:
+        # Collect candidates from instantiations_list or instantiations dict
+        raw_candidates = dependency_ctx.instantiations_list or list(dependency_ctx.instantiations.values())
+
+        # Filter OUT all manual dependencies
+        valid_autogen_candidates: List[ClassInstantiationInfo] = []
+        for info in raw_candidates:
+            if info.class_name in known_manual or is_manual_dependency(info, manual_service_path):
+                continue
+            valid_autogen_candidates.append(info)
+
+        # Candidate selection priority:
+        # Priority 1: Direct match with target class_name
+        if call.class_name:
+            c_low = call.class_name.lower()
+            for info in valid_autogen_candidates:
+                if info.class_name.lower() == c_low or info.class_name.split(".")[-1].lower() == c_low:
+                    chosen_info = info
+                    break
+
+        # Priority 2: Direct match with known autogen classes
+        if not chosen_info and known_autogen:
+            for info in valid_autogen_candidates:
+                if info.class_name in known_autogen or info.class_name.split(".")[-1] in known_autogen:
+                    chosen_info = info
+                    break
+
+        # Priority 3: Explicit autogen detection
+        if not chosen_info:
+            file_stem = os.path.splitext(os.path.basename(file_path))[0]
+            for info in valid_autogen_candidates:
+                if is_autogen_dependency(info, call.class_name, func_name, file_stem, service_root_path):
+                    chosen_info = info
+                    break
+
+        # Priority 4: Any non-manual candidate containing 'client', 'api', or 'service'
+        if not chosen_info:
+            for info in valid_autogen_candidates:
+                if any(kw in info.class_name.lower() for kw in ["client", "api", "service"]):
+                    chosen_info = info
+                    break
+
+        # Priority 5: First valid non-manual candidate
+        if not chosen_info and valid_autogen_candidates:
+            chosen_info = valid_autogen_candidates[0]
+
+    if chosen_info:
+        var_name = chosen_info.variable_name or "client"
+        class_name = chosen_info.class_name
+        if chosen_info.import_line:
+            imports.append(chosen_info.import_line)
+        class_instantiation = chosen_info.instantiation_code
     else:
-        # Fallback to standard module import if no dependency file was provided
+        # Fallback to standard autogen module import (NEVER manual)
         mod_name = os.path.splitext(os.path.basename(file_path))[0]
         if service_root_path:
             pkg_name = os.path.basename(os.path.normpath(service_root_path))
@@ -438,16 +582,27 @@ def generate_function_call_example(
         imports.append(import_str)
         class_instantiation = f"{var_name} = {class_name}(token=\"YOUR_API_TOKEN\")"
 
-    # Add helper imports if factory function exists
-    if dependency_ctx and class_name in dependency_ctx.factory_functions:
-        factory_name = dependency_ctx.factory_functions[class_name]
-        class_instantiation = f"# Option via fabrique:\n{var_name} = {factory_name}\n# Ou instanciation directe:\n{class_instantiation}"
+    # Add helper imports/comments if factory function or container exists
+    target_class_for_factory = chosen_info.class_name if chosen_info else class_name
+    factory_name = None
+    if dependency_ctx and target_class_for_factory:
+        for c_name, f_call in dependency_ctx.factory_functions.items():
+            if c_name.lower() == target_class_for_factory.lower() or c_name.split(".")[-1].lower() == target_class_for_factory.lower():
+                if not any(kw in f_call.lower() for kw in ["manual", "legacy", "old"]):
+                    factory_name = f_call
+                    break
+
+    if factory_name:
+        class_instantiation = f"# Option via fabrique autogénérée:\n{var_name} = {factory_name}\n# Ou instanciation directe:\n{class_instantiation}"
+    elif chosen_info and chosen_info.enclosing_class:
+        enc = chosen_info.enclosing_class
+        class_instantiation += f"\n# Ou via conteneur {enc}:\n# deps = {enc}()\n# {var_name} = deps.{chosen_info.variable_name}"
 
     # Check parameter types and add typing imports if needed
     needed_types = []
     for p in call.function_params:
         ann = p.type_annotation or ""
-        for t in ["List", "Dict", "Optional", "Any", "Union"]:
+        for t in ["List", "Dict", "Optional", "Any", "Union", "Tuple"]:
             if t in ann and t not in needed_types:
                 needed_types.append(t)
     if needed_types:
@@ -470,16 +625,16 @@ def generate_function_call_example(
     # 3. Assemble Complete Snippet
     snippet_parts = [
         "# ==================================================",
-        f"# Exemple d'appel pour la fonction: {func_name}()",
+        f"# Exemple d'appel pour la fonction autogénérée: {func_name}()",
         f"# Endpoint: [{call.http_method}] {call.normalized_endpoint}",
     ]
-    if dep_file:
-        snippet_parts.append(f"# Basé sur: {os.path.basename(dep_file)}")
+    if dep_file and chosen_info:
+        snippet_parts.append(f"# Dépendance autogénérée issue de: {os.path.basename(dep_file)}")
     snippet_parts.append("# ==================================================\n")
 
-    snippet_parts.append("# 1. Imports nécessaires")
+    snippet_parts.append("# 1. Imports nécessaires (microservice autogénéré)")
     snippet_parts.extend(imports)
-    snippet_parts.append("\n# 2. Initialisation de la dépendance")
+    snippet_parts.append("\n# 2. Initialisation de la dépendance autogénérée")
     snippet_parts.append(class_instantiation)
     snippet_parts.append("\n# 3. Appel de la fonction du microservice autogénéré")
     snippet_parts.append(call_str)
@@ -491,7 +646,7 @@ def generate_function_call_example(
         "function_name": func_name,
         "class_name": class_name,
         "variable_name": var_name,
-        "dependency_file": os.path.basename(dep_file) if dep_file else None,
+        "dependency_file": os.path.basename(dep_file) if (dep_file and chosen_info) else None,
         "imports": imports,
         "instantiation": class_instantiation,
         "call_snippet": call_str,
