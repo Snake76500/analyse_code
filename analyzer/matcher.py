@@ -189,8 +189,9 @@ def are_paths_exact_match(p1: str, p2: str) -> bool:
 
 def are_file_names_matching(p1: str, p2: str) -> bool:
     """
-    Check if two file paths correspond to the same file:
-    either exact relative path or identical file basename (e.g. 'service.py' == 'service.py').
+    Check if two file paths correspond to the same file or files containing the same name.
+    Rule: Relie bien les fichiers contenant le même nom (case-insensitive, stem and basename).
+    Endpoints from files with the same name are linked; files with different names are not crossed.
     """
     if not p1 and not p2:
         return True
@@ -198,9 +199,28 @@ def are_file_names_matching(p1: str, p2: str) -> bool:
         return False
     if are_paths_exact_match(p1, p2):
         return True
-    base1 = os.path.basename(os.path.normpath(p1).replace("\\", "/"))
-    base2 = os.path.basename(os.path.normpath(p2).replace("\\", "/"))
-    return bool(base1 and base2 and base1 == base2)
+
+    base1 = os.path.basename(os.path.normpath(p1).replace("\\", "/")).lower()
+    base2 = os.path.basename(os.path.normpath(p2).replace("\\", "/")).lower()
+    if base1 == base2:
+        return True
+
+    stem1 = os.path.splitext(base1)[0]
+    stem2 = os.path.splitext(base2)[0]
+    if stem1 == stem2:
+        return True
+
+    clean1 = re.sub(r'(_service|_controller|_api|_client|_router|_view)$', '', stem1)
+    clean2 = re.sub(r'(_service|_controller|_api|_client|_router|_view)$', '', stem2)
+    if clean1 and clean2 and clean1 == clean2:
+        return True
+
+    # Check if files contain the same name (for significant stems >= 3 chars)
+    if len(clean1) >= 3 and len(clean2) >= 3:
+        if clean1 in clean2 or clean2 in clean1:
+            return True
+
+    return False
 
 
 def should_enforce_same_filename(

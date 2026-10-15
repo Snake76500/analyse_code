@@ -64,6 +64,11 @@ class AutogenApiClient:
         return response.json()
 
 
+class SyncApiClient(AutogenApiClient):
+    """Synchronous API Client (SyncApiClient) generated from OpenAPI spec."""
+    pass
+
+
 # Server route handlers generated from spec
 @router.get("/payments/{id}")
 def retrieve_payment(id: str, include_meta: Optional[bool] = None) -> Dict[str, Any]:

@@ -21,6 +21,23 @@ class ClassInstantiationInfo:
     enclosing_class: Optional[str] = None
     is_manual: bool = False
     is_autogen: bool = False
+    has_sync_api_client: bool = False
+
+
+def references_sync_api_client(*items: Any) -> bool:
+    """
+    Check if any text, node or code snippet contains a reference to SyncApiClient.
+    Strictly excludes AsyncApiClient / async_api_client occurrences.
+    """
+    for item in items:
+        if not item:
+            continue
+        s = str(item).lower()
+        if re.search(r"(?<!a)sync[_\-]?(api)?[_\-]?(client|sdk)", s):
+            return True
+        if re.search(r"(?<!a)sync[_\-]?api", s) and "client" in s:
+            return True
+    return False
 
 
 @dataclass
@@ -40,43 +57,80 @@ def extract_service_stem_from_dependency_path(file_path: str) -> Optional[str]:
     Extract the homonym target service stem from a dependency file path.
     Example:
       'fichiera_dependency.py' -> 'fichiera'
+      'dependency_fichiera.py' -> 'fichiera'
+      'fichiera-dependency.py' -> 'fichiera'
+      'fichiera_dep.py' -> 'fichiera'
       'controllers/users_dependency.py' -> 'users'
-      'service_dependency.py' -> 'service'
+      'dependencies/fichiera.py' -> 'fichiera'
     """
     if not file_path:
         return None
     base = os.path.basename(file_path)
     if not base.endswith(".py"):
         return None
-    name_without_ext = base[:-3]
-    if name_without_ext.endswith("_dependency"):
-        return name_without_ext[:-len("_dependency")]
-    if name_without_ext.endswith("_dependencies"):
-        return name_without_ext[:-len("_dependencies")]
-    if name_without_ext.endswith("-dependency"):
-        return name_without_ext[:-len("-dependency")]
-    if name_without_ext.endswith("-dependencies"):
-        return name_without_ext[:-len("-dependencies")]
+    name = base[:-3]
+
+    # Check folder name (e.g. dependencies/fichiera.py or dependency/users.py)
+    norm = os.path.normpath(file_path).replace("\\", "/")
+    parts = norm.split("/")
+    if len(parts) >= 2 and parts[-2].lower() in ["dependency", "dependencies", "deps"]:
+        return name
+
+    # Standard suffixes
+    for suffix in [
+        "_dependency", "_dependencies", "-dependency", "-dependencies",
+        "_dep", "_deps", "-dep", "-deps",
+        ".dependency", ".dependencies"
+    ]:
+        if name.lower().endswith(suffix):
+            return name[:-len(suffix)]
+
+    # Standard prefixes
+    for prefix in [
+        "dependency_", "dependencies_", "dep_", "deps_",
+        "dependency-", "dependencies-", "dep-", "deps-"
+    ]:
+        if name.lower().startswith(prefix):
+            return name[len(prefix):]
+
+    # Regex cleanup of dependency keywords anywhere in filename
+    cleaned = re.sub(r'(_|-)?dependenc(y|ies)(_|-)?', '', name, flags=re.IGNORECASE)
+    cleaned = re.sub(r'(_|-)?deps?(_|-)?', '', cleaned, flags=re.IGNORECASE)
+    if cleaned and cleaned.lower() != name.lower():
+        return cleaned
+
     return None
 
 
 def build_dependency_registry_from_directory(dir_path: str) -> Dict[str, DependencyContext]:
     """
     Discover and parse all *_dependency.py files in a directory.
-    Maps homonym_stem (lower-cased) -> DependencyContext.
-    Enforces strict 1-to-1 homonym binding:
-    fichiera.py is linked ONLY to fichiera_dependency.py.
+    Maps homonym_stem (lower-cased) and basenames -> DependencyContext.
+    Enforces strict homonym binding: fichiera.py is linked to fichiera_dependency.py.
     """
     registry: Dict[str, DependencyContext] = {}
     if not os.path.exists(dir_path):
         return registry
 
-    if os.path.isfile(dir_path):
-        stem = extract_service_stem_from_dependency_path(dir_path)
+    def _register(full_p: str, rel_p: str = ""):
+        ctx = parse_dependency_file(full_p)
+        if not ctx:
+            return
+        stem = extract_service_stem_from_dependency_path(full_p)
+        base = os.path.splitext(os.path.basename(full_p))[0].lower()
         if stem:
-            ctx = parse_dependency_file(dir_path)
-            if ctx:
-                registry[stem.lower()] = ctx
+            registry[stem.lower()] = ctx
+        registry[base] = ctx
+        if rel_p:
+            rel_stem = extract_service_stem_from_dependency_path(rel_p)
+            if rel_stem:
+                registry[rel_stem.lower()] = ctx
+            rel_base = os.path.splitext(os.path.normpath(rel_p).replace("\\", "/"))[0].lower()
+            registry[rel_base] = ctx
+
+    if os.path.isfile(dir_path):
+        if "_dependency" in dir_path or "dependency" in dir_path or "_dep" in dir_path:
+            _register(dir_path, "")
         return registry
 
     for root, _, files in os.walk(dir_path):
@@ -84,17 +138,11 @@ def build_dependency_registry_from_directory(dir_path: str) -> Dict[str, Depende
             continue
         for file in files:
             if file.endswith(".py"):
-                stem = extract_service_stem_from_dependency_path(file)
-                if stem:
+                f_low = file.lower()
+                if "_dependency" in f_low or "dependency" in f_low or "_dep" in f_low or "-dep" in f_low:
                     full_path = os.path.join(root, file)
-                    ctx = parse_dependency_file(full_path)
-                    if ctx:
-                        registry[stem.lower()] = ctx
-                        # Also key by relative path stem
-                        rel_path = os.path.relpath(full_path, dir_path)
-                        rel_stem = extract_service_stem_from_dependency_path(rel_path)
-                        if rel_stem:
-                            registry[rel_stem.lower()] = ctx
+                    rel_path = os.path.relpath(full_path, dir_path)
+                    _register(full_path, rel_path)
 
     return registry
 
@@ -102,17 +150,23 @@ def build_dependency_registry_from_directory(dir_path: str) -> Dict[str, Depende
 def build_dependency_registry_from_memory(file_list: List[Dict[str, str]]) -> Dict[str, DependencyContext]:
     """
     Discover and parse all *_dependency.py files in an in-memory virtual file list.
-    Maps homonym_stem (lower-cased) -> DependencyContext.
+    Maps homonym_stem (lower-cased) and basenames -> DependencyContext.
     """
     registry: Dict[str, DependencyContext] = {}
     for item in file_list:
         path = item.get("path", "")
         content = item.get("content", "")
         if path.endswith(".py") and content:
-            stem = extract_service_stem_from_dependency_path(path)
-            if stem:
+            f_low = path.lower()
+            if "_dependency" in f_low or "dependency" in f_low or "_dep" in f_low or "-dep" in f_low:
                 ctx = parse_dependency_content(content, path)
-                registry[stem.lower()] = ctx
+                stem = extract_service_stem_from_dependency_path(path)
+                base = os.path.splitext(os.path.basename(path))[0].lower()
+                if stem:
+                    registry[stem.lower()] = ctx
+                registry[base] = ctx
+                norm_rel = os.path.splitext(os.path.normpath(path).replace("\\", "/"))[0].lower()
+                registry[norm_rel] = ctx
     return registry
 
 
@@ -122,7 +176,8 @@ def get_homonym_dependency(
 ) -> Optional[DependencyContext]:
     """
     Retrieve the dependency context uniquely linked to its homonym service file.
-    Rule: fichiera.py can ONLY be linked to fichiera_dependency.py.
+    Rule: Relie bien les fichiers contenant le même nom.
+    e.g. fichiera.py is linked to fichiera_dependency.py.
     """
     if not source_file_path or not registry:
         return None
@@ -130,17 +185,54 @@ def get_homonym_dependency(
     # Base stem from the service file: e.g. "fichiera.py" -> "fichiera"
     base_file = os.path.basename(source_file_path)
     stem = os.path.splitext(base_file)[0].lower()
+    clean_stem = re.sub(r'(_service|_controller|_api|_client|_router|_view)$', '', stem)
 
+    # 1. Direct stem lookup
     if stem in registry:
         return registry[stem]
+    if clean_stem in registry:
+        return registry[clean_stem]
 
-    # Check relative path stem if available (e.g. "controllers/fichiera")
+    # 2. Check relative path stem if available (e.g. "controllers/fichiera")
     norm_path = os.path.normpath(source_file_path).replace("\\", "/")
     rel_stem = os.path.splitext(norm_path)[0].lower()
+    clean_rel = re.sub(r'(_service|_controller|_api|_client|_router|_view)$', '', rel_stem)
     if rel_stem in registry:
         return registry[rel_stem]
+    if clean_rel in registry:
+        return registry[clean_rel]
 
-    # No homonym dependency file exists for this service file
+    # 3. Match by keys containing stem or stem containing key
+    for reg_key, ctx in registry.items():
+        reg_k_low = reg_key.lower()
+        reg_clean = re.sub(r'(_service|_controller|_api|_client|_router|_view)$', '', reg_k_low)
+        if reg_k_low == stem or reg_clean == clean_stem:
+            return ctx
+        if (len(clean_stem) >= 3 and clean_stem in reg_k_low) or (len(reg_clean) >= 3 and reg_clean in stem):
+            return ctx
+
+    # 4. Match by actual dependency file path containing the service stem ("contenant le même nom")
+    for reg_key, ctx in registry.items():
+        if ctx.file_path:
+            dep_base = os.path.basename(ctx.file_path).lower()
+            dep_stem = os.path.splitext(dep_base)[0]
+            if stem and (stem in dep_stem or (len(clean_stem) >= 3 and clean_stem in dep_stem)):
+                return ctx
+            dep_extracted = extract_service_stem_from_dependency_path(ctx.file_path)
+            if dep_extracted:
+                dep_ext_low = dep_extracted.lower()
+                if dep_ext_low in stem or (len(clean_stem) >= 3 and dep_ext_low in clean_stem):
+                    return ctx
+
+    # 5. Single dependency context in registry fallback
+    if len(registry) == 1:
+        single_ctx = list(registry.values())[0]
+        if single_ctx.file_path:
+            dep_base = os.path.basename(single_ctx.file_path).lower()
+            if stem in dep_base or clean_stem in dep_base:
+                return single_ctx
+        return single_ctx
+
     return None
 
 
@@ -185,6 +277,7 @@ class DependencyFileVisitor(ast.NodeVisitor):
         self.instantiations_list: List[ClassInstantiationInfo] = []
         self.factory_functions: Dict[str, str] = {}
         self.dependency_classes: List[str] = []
+        self.sync_classes: Set[str] = set()
 
     def visit_Import(self, node: ast.Import):
         try:
@@ -193,6 +286,8 @@ class DependencyFileVisitor(ast.NodeVisitor):
             for alias in node.names:
                 name = alias.asname or alias.name
                 self.import_modules[name] = line
+                if references_sync_api_client(name, alias.name):
+                    self.sync_classes.add(name)
         except Exception:
             pass
 
@@ -202,27 +297,53 @@ class DependencyFileVisitor(ast.NodeVisitor):
             self.imports.append(line)
             for alias in node.names:
                 name = alias.asname or alias.name
-                self.import_modules[name] = line
+                if node.module:
+                    self.import_modules[name] = f"from {node.module} import {name}"
+                else:
+                    self.import_modules[name] = line
+                if references_sync_api_client(name, alias.name):
+                    self.sync_classes.add(name)
         except Exception:
             pass
 
     def visit_ClassDef(self, node: ast.ClassDef):
         self.dependency_classes.append(node.name)
+        is_sync_class = references_sync_api_client(node.name)
+        for base in node.bases:
+            try:
+                base_str = ast.unparse(base)
+                if references_sync_api_client(base_str):
+                    is_sync_class = True
+            except Exception:
+                pass
+
+        if is_sync_class:
+            self.sync_classes.add(node.name)
+
         # Inspect class body for assignments, __init__, and getter methods
         for item in node.body:
             if isinstance(item, ast.FunctionDef) and item.name == "__init__":
-                self._inspect_init(node.name, item)
+                self._inspect_init(node.name, item, is_sync_class=is_sync_class)
             elif isinstance(item, ast.FunctionDef) and item.name != "__init__":
                 self._inspect_method(node.name, item)
-            elif isinstance(item, ast.AnnAssign) and isinstance(item.value, ast.Call):
-                self._inspect_call_assign(item.target, item.value, enclosing_class=node.name)
+            elif isinstance(item, ast.AnnAssign):
+                type_str = ""
+                if item.annotation:
+                    try:
+                        type_str = ast.unparse(item.annotation)
+                    except Exception:
+                        pass
+                is_sync = is_sync_class or references_sync_api_client(type_str)
+                if isinstance(item.value, ast.Call):
+                    self._inspect_call_assign(item.target, item.value, enclosing_class=node.name, is_sync_hint=is_sync, type_ann=type_str)
+                elif is_sync:
+                    self._create_annotated_client(item.target, type_str, enclosing_class=node.name)
             elif isinstance(item, ast.Assign) and isinstance(item.value, ast.Call):
                 for target in item.targets:
-                    self._inspect_call_assign(target, item.value, enclosing_class=node.name)
+                    self._inspect_call_assign(target, item.value, enclosing_class=node.name, is_sync_hint=is_sync_class)
         self.generic_visit(node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
-        # Look for factory functions e.g. def get_client() -> AutogenApiClient: return AutogenApiClient(...)
         return_type = None
         if node.returns:
             try:
@@ -230,28 +351,101 @@ class DependencyFileVisitor(ast.NodeVisitor):
             except Exception:
                 pass
 
+        is_sync_func = references_sync_api_client(node.name, return_type)
+
         for stmt in node.body:
-            if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Call):
-                func_name = self._get_call_name(stmt.value)
-                target_class = return_type or func_name
-                if target_class:
-                    self.factory_functions[target_class] = f"{node.name}()"
-                    self._inspect_call_assign(ast.Name(id="client", ctx=ast.Store()), stmt.value)
+            if isinstance(stmt, ast.Return):
+                if isinstance(stmt.value, ast.Call):
+                    func_name = self._get_call_name(stmt.value)
+                    target_class = return_type or func_name
+                    if references_sync_api_client(func_name, return_type):
+                        is_sync_func = True
+                    if target_class:
+                        self.factory_functions[target_class] = f"{node.name}()"
+                        self._inspect_call_assign(
+                            ast.Name(id="sync_api_client" if is_sync_func else "client", ctx=ast.Store()),
+                            stmt.value,
+                            is_sync_hint=is_sync_func
+                        )
+                elif is_sync_func and return_type:
+                    self.factory_functions[return_type] = f"{node.name}()"
+                    import_line = self.import_modules.get(return_type, "")
+                    info = ClassInstantiationInfo(
+                        class_name=return_type,
+                        variable_name="sync_api_client",
+                        import_line=import_line,
+                        instantiation_code=f"sync_api_client = {node.name}()",
+                        source_file=self.file_path,
+                        has_sync_api_client=True,
+                        is_autogen=True
+                    )
+                    self.instantiations[return_type] = info
+                    self.instantiations_list.append(info)
 
         self.generic_visit(node)
 
     def visit_Assign(self, node: ast.Assign):
-        # Top-level assignment: client = AutogenApiClient(token="...")
         if isinstance(node.value, ast.Call):
             for target in node.targets:
                 self._inspect_call_assign(target, node.value)
         self.generic_visit(node)
 
-    def _inspect_init(self, enclosing_class: str, init_node: ast.FunctionDef):
+    def visit_AnnAssign(self, node: ast.AnnAssign):
+        type_str = ""
+        if node.annotation:
+            try:
+                type_str = ast.unparse(node.annotation)
+            except Exception:
+                pass
+        is_sync = references_sync_api_client(type_str)
+        if isinstance(node.value, ast.Call):
+            self._inspect_call_assign(node.target, node.value, is_sync_hint=is_sync, type_ann=type_str)
+        elif is_sync:
+            self._create_annotated_client(node.target, type_str)
+        self.generic_visit(node)
+
+    def _create_annotated_client(self, target_node: ast.AST, type_str: str, enclosing_class: str = ""):
+        var_name = "sync_api_client"
+        try:
+            target_str = ast.unparse(target_node)
+            if target_str.startswith("self."):
+                var_name = target_str.replace("self.", "")
+            else:
+                var_name = target_str
+        except Exception:
+            pass
+        cls_name = type_str if type_str else "SyncApiClient"
+        import_line = self.import_modules.get(cls_name) or self.import_modules.get("SyncApiClient", "")
+        info = ClassInstantiationInfo(
+            class_name=cls_name,
+            variable_name=var_name,
+            import_line=import_line,
+            instantiation_code=f"{var_name} = {cls_name}()",
+            source_file=self.file_path,
+            enclosing_class=enclosing_class,
+            has_sync_api_client=True,
+            is_autogen=True
+        )
+        self.instantiations[cls_name] = info
+        self.instantiations_list.append(info)
+
+    def _inspect_init(self, enclosing_class: str, init_node: ast.FunctionDef, is_sync_class: bool = False):
         for stmt in init_node.body:
             if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call):
                 for target in stmt.targets:
-                    self._inspect_call_assign(target, stmt.value, enclosing_class=enclosing_class)
+                    self._inspect_call_assign(target, stmt.value, enclosing_class=enclosing_class, is_sync_hint=is_sync_class)
+            elif isinstance(stmt, ast.AnnAssign):
+                type_str = ""
+                if stmt.annotation:
+                    try:
+                        type_str = ast.unparse(stmt.annotation)
+                    except Exception:
+                        pass
+                is_sync = is_sync_class or references_sync_api_client(type_str)
+                if isinstance(stmt.value, ast.Call):
+                    self._inspect_call_assign(stmt.target, stmt.value, enclosing_class=enclosing_class, is_sync_hint=is_sync, type_ann=type_str)
+                elif is_sync:
+                    self._create_annotated_client(stmt.target, type_str, enclosing_class=enclosing_class)
 
     def _inspect_method(self, enclosing_class: str, func_node: ast.FunctionDef):
         return_type = None
@@ -277,7 +471,7 @@ class DependencyFileVisitor(ast.NodeVisitor):
         except Exception:
             return ""
 
-    def _inspect_call_assign(self, target_node: ast.AST, call_node: ast.Call, enclosing_class: str = ""):
+    def _inspect_call_assign(self, target_node: ast.AST, call_node: ast.Call, enclosing_class: str = "", is_sync_hint: bool = False, type_ann: str = ""):
         class_name = self._get_call_name(call_node)
         # Handle self.client or client
         var_name = "client"
@@ -298,6 +492,12 @@ class DependencyFileVisitor(ast.NodeVisitor):
                 except Exception:
                     kwargs[kw.arg] = "..."
 
+        call_args_str = ""
+        try:
+            call_args_str = " ".join([ast.unparse(a) for a in call_node.args])
+        except Exception:
+            pass
+
         try:
             call_code = ast.unparse(call_node)
         except Exception:
@@ -314,7 +514,19 @@ class DependencyFileVisitor(ast.NodeVisitor):
 
         lower_check = f"{class_name} {var_name} {import_line} {enclosing_class}".lower()
         is_manual = any(kw in lower_check for kw in ["manual", "legacy", "old", "v1", "ancient", "deprecated"])
-        is_autogen = any(kw in lower_check for kw in ["autogen", "auto", "openapi", "swagger", "generated"])
+
+        # Check references to SyncApiClient
+        kwargs_combined = " ".join(f"{k} {v}" for k, v in kwargs.items())
+        has_sync_api_client = (
+            is_sync_hint or
+            class_name in self.sync_classes or
+            references_sync_api_client(
+                class_name, var_name, call_code,
+                enclosing_class, type_ann, kwargs_combined, call_args_str
+            )
+        )
+
+        is_autogen = has_sync_api_client or any(kw in lower_check for kw in ["autogen", "auto", "openapi", "swagger", "generated"])
 
         info = ClassInstantiationInfo(
             class_name=class_name,
@@ -325,7 +537,8 @@ class DependencyFileVisitor(ast.NodeVisitor):
             source_file=self.file_path,
             enclosing_class=enclosing_class,
             is_manual=is_manual,
-            is_autogen=is_autogen
+            is_autogen=is_autogen,
+            has_sync_api_client=has_sync_api_client
         )
         self.instantiations[class_name] = info
         self.instantiations_list.append(info)
@@ -338,6 +551,33 @@ def parse_dependency_content(content: str, file_path: str = "dependency.py") -> 
         tree = ast.parse(content, filename=file_path)
         visitor = DependencyFileVisitor(file_path, content)
         visitor.visit(tree)
+
+        # Safety check: if file references SyncApiClient but no instantiation was tagged, synthesize one
+        has_any_sync = any(info.has_sync_api_client for info in visitor.instantiations_list)
+        if not has_any_sync and references_sync_api_client(content):
+            imp = ""
+            for sym, line in visitor.import_modules.items():
+                if references_sync_api_client(sym, line):
+                    imp = line
+                    break
+            if not imp:
+                for line in content.splitlines():
+                    if references_sync_api_client(line) and "import" in line:
+                        imp = line.strip()
+                        break
+
+            synth_info = ClassInstantiationInfo(
+                class_name="SyncApiClient",
+                variable_name="sync_api_client",
+                import_line=imp,
+                instantiation_code="sync_api_client = SyncApiClient()",
+                source_file=file_path,
+                is_manual=False,
+                is_autogen=True,
+                has_sync_api_client=True
+            )
+            visitor.instantiations["SyncApiClient"] = synth_info
+            visitor.instantiations_list.append(synth_info)
 
         ctx.imports = visitor.imports
         ctx.import_modules = visitor.import_modules
@@ -597,7 +837,41 @@ def reverse_engineer_autogen_dependency(
             continue
         valid_candidates.append(info)
 
-    if not valid_candidates:
+    # Rule 1: Prioritize dependencies containing a reference to SyncApiClient
+    sync_candidates = [c for c in valid_candidates if getattr(c, "has_sync_api_client", False)]
+    if not sync_candidates and references_sync_api_client(dependency_ctx.file_content):
+        # Synthesize SyncApiClient candidate if mentioned anywhere in the dependency file
+        imp = dependency_ctx.import_modules.get("SyncApiClient") or ""
+        if not imp:
+            for l in dependency_ctx.file_content.splitlines():
+                if references_sync_api_client(l) and "import" in l:
+                    imp = l.strip()
+                    break
+        synth = ClassInstantiationInfo(
+            class_name="SyncApiClient",
+            variable_name="sync_api_client",
+            import_line=imp,
+            instantiation_code="sync_api_client = SyncApiClient()",
+            source_file=dependency_ctx.file_path or "",
+            is_manual=False,
+            is_autogen=True,
+            has_sync_api_client=True
+        )
+        sync_candidates = [synth]
+
+    # Target pool strictly prioritizes SyncApiClient candidates when available
+    candidate_pool = sync_candidates if sync_candidates else valid_candidates
+
+    if not candidate_pool:
+        if references_sync_api_client(dependency_ctx.file_content):
+            return ClassInstantiationInfo(
+                class_name="SyncApiClient",
+                variable_name="sync_api_client",
+                import_line="",
+                instantiation_code="sync_api_client = SyncApiClient()",
+                has_sync_api_client=True,
+                is_autogen=True
+            ), "SyncApiClient"
         return None, call.class_name or "AutogenApiClient"
 
     func_name = call.function_name
@@ -660,23 +934,23 @@ def reverse_engineer_autogen_dependency(
             except Exception:
                 pass
 
-    # 3. Reverse-Engineering Step 3: Match source classes against valid candidates in _dependency.py
-    # Priority 3A: Candidate in _dependency.py that directly instantiates one of the candidate source classes
+    # 3. Reverse-Engineering Step 3: Match source classes against candidates in candidate_pool
+    # Priority 3A: Candidate that directly instantiates one of the candidate source classes
     if candidate_source_classes:
-        for info in valid_candidates:
+        for info in candidate_pool:
             c_name_low = info.class_name.lower()
             c_base_low = info.class_name.split(".")[-1].lower()
             if c_name_low in candidate_source_classes or c_base_low in candidate_source_classes:
                 return info, info.class_name
 
-        for info in valid_candidates:
+        for info in candidate_pool:
             for sc in candidate_source_classes:
                 if re.search(r'\b' + re.escape(sc) + r'\b', info.import_line.lower()):
                     return info, info.class_name
 
-    # Priority 3B: Check if any candidate class in _dependency.py has methods in class_method_index
+    # Priority 3B: Check if any candidate class has methods in class_method_index
     # matching func_name or callee_name
-    for info in valid_candidates:
+    for info in candidate_pool:
         c_methods = class_method_index.get(info.class_name.lower()) or class_method_index.get(info.class_name.split(".")[-1].lower())
         if c_methods:
             if func_name in c_methods or (callee_name and callee_name in c_methods):
@@ -685,17 +959,22 @@ def reverse_engineer_autogen_dependency(
     # Priority 3C: Check file stem match
     if file_path:
         file_stem = os.path.splitext(os.path.basename(file_path))[0].lower()
-        for info in valid_candidates:
+        for info in candidate_pool:
             if file_stem in info.import_line.lower() or file_stem in info.class_name.lower():
                 return info, info.class_name
 
-    # Priority 3D: Autogen marked candidates
-    for info in valid_candidates:
+    # Priority 3D: Candidates explicitly referencing SyncApiClient
+    for info in candidate_pool:
+        if getattr(info, "has_sync_api_client", False):
+            return info, info.class_name
+
+    # Priority 3E: Autogen marked candidates
+    for info in candidate_pool:
         if info.is_autogen:
             return info, info.class_name
 
-    # Priority 3E: First valid candidate
-    return valid_candidates[0], valid_candidates[0].class_name
+    # Priority 3F: First candidate in candidate_pool
+    return candidate_pool[0], candidate_pool[0].class_name
 
 
 def generate_function_call_example(

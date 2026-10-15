@@ -443,8 +443,136 @@ class ProductsApi:
         self.assertEqual(ex_users["variable_name"], "users_client")
         self.assertIn("users_client.get_user_profile", ex_users["call_snippet"])
 
+    def test_sync_api_client_prioritization(self):
+        """
+        Rule: prends les dependency contenant une référence à SyncApiClient.
+        When both AsyncApiClient and SyncApiClient are declared,
+        the generator MUST strictly choose the dependency referencing SyncApiClient.
+        """
+        dep_content = """
+from client.async_client import AsyncApiClient
+from client.sync_client import SyncApiClient
+from client.manual import ManualClient
+
+# Manual client (legacy)
+manual = ManualClient()
+
+# Asynchronous client
+async_client = AsyncApiClient(token="ASYNC_TOKEN")
+
+# Synchronous client (SyncApiClient)
+sync_api_client = SyncApiClient(token="SYNC_TOKEN")
+"""
+        registry = build_dependency_registry_from_memory([
+            {"path": "users_dependency.py", "content": dep_content}
+        ])
+
+        ctx = registry.get("users")
+        self.assertIsNotNone(ctx)
+
+        # Check parsed instantiations
+        sync_infos = [info for info in ctx.instantiations_list if info.has_sync_api_client]
+        self.assertTrue(len(sync_infos) >= 1)
+        self.assertEqual(sync_infos[0].class_name, "SyncApiClient")
+
+        call = EndpointCall(
+            function_name="get_user",
+            class_name="UsersApi",
+            file_path="users.py",
+            line_number=1,
+            end_line_number=5,
+            kind="client_call",
+            http_method="GET",
+            raw_endpoint="/users/{id}",
+            normalized_endpoint="/users/{PARAM}",
+            function_params=[ParameterInfo(name="id")]
+        )
+
+        ex = generate_function_call_example(call=call, dependency_ctx=ctx)
+        self.assertEqual(ex["class_name"], "SyncApiClient")
+        self.assertEqual(ex["variable_name"], "sync_api_client")
+        self.assertIn("SyncApiClient", ex["full_code"])
+        self.assertNotIn("AsyncApiClient", ex["full_code"])
+        self.assertNotIn("ManualClient", ex["full_code"])
+
+    def test_sync_api_client_inheritance_and_args(self):
+        """
+        Verify classes inheriting from SyncApiClient or passing SyncApiClient as argument
+        are properly detected and selected.
+        """
+        dep_content = """
+from openapi.client import SyncApiClient
+
+class UsersSyncClient(SyncApiClient):
+    def __init__(self, token: str = "DEFAULT"):
+        super().__init__(token=token)
+
+sync_service = UsersSyncClient()
+"""
+        registry = build_dependency_registry_from_memory([
+            {"path": "service_dependency.py", "content": dep_content}
+        ])
+        ctx = registry.get("service")
+        self.assertIsNotNone(ctx)
+
+        call = EndpointCall(
+            function_name="list_items",
+            class_name="UsersSyncClient",
+            file_path="service.py",
+            line_number=1,
+            end_line_number=5,
+            kind="client_call",
+            http_method="GET",
+            raw_endpoint="/items",
+            normalized_endpoint="/items",
+            function_params=[]
+        )
+
+        ex = generate_function_call_example(call=call, dependency_ctx=ctx)
+        self.assertIn("UsersSyncClient", ex["class_name"])
+        self.assertIn("sync_service", ex["full_code"])
+
+    def test_link_files_containing_same_name(self):
+        """
+        Rule: Relie bien les fichiers contenant le même nom.
+        - Manual fichiera.py and Autogen FichierA.py / fichiera.py must match
+        - Service fichiera.py links strictly to dependency_fichiera.py or fichiera_dependency.py
+        - FichierA and FichierB must NEVER cross-match!
+        """
+        from analyzer.matcher import are_file_names_matching
+
+        # Test matcher filename linking
+        self.assertTrue(are_file_names_matching("fichiera.py", "fichiera.py"))
+        self.assertTrue(are_file_names_matching("FichierA.py", "fichiera.py"))
+        self.assertTrue(are_file_names_matching("controllers/fichiera.py", "api/fichiera.py"))
+        self.assertTrue(are_file_names_matching("fichiera_service.py", "fichiera.py"))
+        self.assertTrue(are_file_names_matching("fichiera_controller.py", "fichiera_api.py"))
+
+        # Must NOT cross-match different names
+        self.assertFalse(are_file_names_matching("fichiera.py", "fichierb.py"))
+        self.assertFalse(are_file_names_matching("users.py", "orders.py"))
+
+        # Test dependency linking
+        dep_files = [
+            {"path": "dependency_fichiera.py", "content": "from client import SyncApiClient\nsync_client = SyncApiClient()"},
+            {"path": "fichierb_dependency.py", "content": "from client import SyncApiClient\nsync_client = SyncApiClient()"}
+        ]
+        registry = build_dependency_registry_from_memory(dep_files)
+
+        ctx_a = get_homonym_dependency("fichiera.py", registry)
+        ctx_b = get_homonym_dependency("fichierb.py", registry)
+
+        self.assertIsNotNone(ctx_a)
+        self.assertIsNotNone(ctx_b)
+        self.assertIn("fichiera", ctx_a.file_path)
+        self.assertIn("fichierb", ctx_b.file_path)
+
+        # Confirm non-homonym does not cross
+        self.assertIsNone(get_homonym_dependency("fichierc.py", registry))
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
