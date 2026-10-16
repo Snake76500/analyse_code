@@ -949,7 +949,7 @@ def get_sync_api_client(token: str = "PROD_TOKEN") -> SyncApiClient:
             service_root_path="/path/to/autogen_service"
         )
         self.assertIn("client = SyncApiClient = depends(get_sync_api_client)", ex["instantiation"])
-        self.assertIn("from fastapi import Depends as depends", ex["imports"])
+        self.assertIn("from bp2i_airflow_library.dependencies import depends", ex["imports"])
         self.assertIn("from autogen_service.service_dependency import get_sync_api_client", ex["imports"])
 
 

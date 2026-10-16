@@ -37,7 +37,7 @@ def sync_user_data(user_id: int):
 # ==============================================================================
 from autogen_service.service import SyncApiClient
 from autogen_service.service_dependency import get_sync_api_client
-from fastapi import Depends as depends
+from bp2i_airflow_library.dependencies import depends
 
 def sync_user_data(user_id: int):
     # Instanciation via dépendance FastAPI autogénérée :

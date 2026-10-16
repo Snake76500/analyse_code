@@ -159,7 +159,7 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
                 manual_calls = parse_files_in_memory(manual_files, resolve_parents=manual_resolve)
                 autogen_calls = parse_files_in_memory(autogen_files, resolve_parents=autogen_resolve)
                 manual_label = "Fichiers manuels importés"
-                autogen_label = "Fichiers autogénérés importés"
+                autogen_label = "bp2i_airflow_library"
                 dep_registry = build_dependency_registry_from_memory(autogen_files)
                 autogen_method_index = build_class_method_index(file_list=autogen_files, calls=autogen_calls)
                 autogen_subattr_index = build_class_subattributes_index(file_list=autogen_files, dependency_registry=dep_registry)

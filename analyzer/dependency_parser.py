@@ -1630,7 +1630,7 @@ def generate_function_call_example(
                 dep_imp = f"from {dep_stem} import {factory_fn}"
             if dep_imp not in imports:
                 imports.append(dep_imp)
-        fastapi_imp = "from fastapi import Depends as depends"
+        fastapi_imp = "from bp2i_airflow_library.dependencies import depends"
         if fastapi_imp not in imports:
             imports.append(fastapi_imp)
     elif chosen_info and chosen_info.enclosing_class:
