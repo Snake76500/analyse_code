@@ -470,7 +470,7 @@ function renderMatrixTable() {
             <td>${manualHtml}</td>
             <td>${autogenHtml}</td>
             <td>${statusHtml}${chipsHtml}</td>
-            <td style="text-align: center;">${actionHtml}</td>
+            <td class="action-cell" style="text-align: center; white-space: nowrap;">${actionHtml}</td>
         `;
 
         tbody.appendChild(tr);

@@ -1095,17 +1095,41 @@ body {
 }
 
 /* Action Buttons Group & Code Snippet Modal */
+.matrix-table th.col-actions,
+.matrix-table th:last-child,
+.matrix-table td.action-cell,
+.matrix-table td:last-child {
+    min-width: 165px;
+    white-space: nowrap;
+    text-align: center;
+    padding: 12px 10px;
+}
+
 .action-buttons-group {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     justify-content: center;
+    white-space: nowrap;
+    flex-wrap: nowrap;
+}
+
+.action-buttons-group .btn {
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .btn-example-code {
     border-color: rgba(168, 85, 247, 0.4);
     color: #c084fc;
     background: rgba(168, 85, 247, 0.08);
+    white-space: nowrap;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 12px;
 }
 
 .btn-example-code:hover {

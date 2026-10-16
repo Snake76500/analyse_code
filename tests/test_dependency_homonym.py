@@ -434,7 +434,7 @@ class ProductsApi:
         self.assertEqual(ex_prod["class_name"], "ProductsApi")
         self.assertEqual(ex_prod["variable_name"], "products_client")
         self.assertIn("products_client.get_product_views", ex_prod["call_snippet"])
-        self.assertIn("Dependencies().get_products()", ex_prod["instantiation"])
+        self.assertIn("depends(Dependencies().get_products)", ex_prod["instantiation"])
 
         # 2. Reverse-engineering for get_user_profile must pick UsersApi / users_client
         ex_users = generate_function_call_example(
@@ -915,6 +915,42 @@ class ManualClient:
         self.assertIsNotNone(ex)
         self.assertEqual(ex["call_target"], "client.views")
         self.assertIn("response = client.views.get_product_views(", ex["call_snippet"])
+
+    def test_depends_factory_instantiation(self):
+        """
+        Verify that when a factory function is found in the dependency context,
+        the class instantiation follows: client = Nom de la classe = depends(nom de la fabrique)
+        and adds the necessary FastAPI Depends and factory imports.
+        """
+        dep_code = """
+from autogen_service.service import SyncApiClient
+client = SyncApiClient(token="PROD_TOKEN")
+
+def get_sync_api_client(token: str = "PROD_TOKEN") -> SyncApiClient:
+    return SyncApiClient(token=token)
+"""
+        dep_ctx = parse_dependency_content(content=dep_code, file_path="service_dependency.py")
+        self.assertIn("SyncApiClient", dep_ctx.factory_functions)
+
+        call = EndpointCall(
+            file_path="service.py",
+            function_name="get_users",
+            class_name="SyncApiClient",
+            line_number=1,
+            end_line_number=2,
+            kind="client_call",
+            http_method="GET",
+            raw_endpoint="/users",
+            normalized_endpoint="/users"
+        )
+        ex = generate_function_call_example(
+            call=call,
+            dependency_ctx=dep_ctx,
+            service_root_path="/path/to/autogen_service"
+        )
+        self.assertIn("client = SyncApiClient = depends(get_sync_api_client)", ex["instantiation"])
+        self.assertIn("from fastapi import Depends as depends", ex["imports"])
+        self.assertIn("from autogen_service.service_dependency import get_sync_api_client", ex["imports"])
 
 
 if __name__ == "__main__":

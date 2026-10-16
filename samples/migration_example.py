@@ -36,10 +36,14 @@ def sync_user_data(user_id: int):
 # APRÈS LA MIGRATION (Microservice Autogénéré)
 # ==============================================================================
 from autogen_service.service import SyncApiClient
+from autogen_service.service_dependency import get_sync_api_client
+from fastapi import Depends as depends
 
 def sync_user_data(user_id: int):
-    # Instanciation du client autogénéré synchrone avec token
-    client = SyncApiClient(token="secret-api-key-123")
+    # Instanciation via dépendance FastAPI autogénérée :
+    client = SyncApiClient = depends(get_sync_api_client)
+    # Ou instanciation directe :
+    # client = SyncApiClient(token="secret-api-key-123")
 
     # 1. getUserById via la sous-classe client.users avec id au lieu de user_id
     profile = client.users.get_user_by_id(id=user_id)

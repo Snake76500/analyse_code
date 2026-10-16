@@ -1618,7 +1618,21 @@ def generate_function_call_example(
                     break
 
     if factory_name:
-        class_instantiation = f"# Option via fabrique autogénérée:\n{var_name} = {factory_name}\n# Ou instanciation directe:\n{class_instantiation}"
+        factory_fn = factory_name[:-2] if factory_name.endswith("()") else factory_name
+        # Instanciation de la classe selon: client = Nom de la classe = depends(nom de la fabrique)
+        class_instantiation = f"{var_name} = {class_name} = depends({factory_fn})\n# Ou instanciation directe:\n{class_instantiation}"
+        if dep_file and factory_fn.isidentifier():
+            dep_stem = os.path.splitext(os.path.basename(dep_file))[0]
+            if service_root_path:
+                pkg_name = os.path.basename(os.path.normpath(service_root_path))
+                dep_imp = f"from {pkg_name}.{dep_stem} import {factory_fn}"
+            else:
+                dep_imp = f"from {dep_stem} import {factory_fn}"
+            if dep_imp not in imports:
+                imports.append(dep_imp)
+        fastapi_imp = "from fastapi import Depends as depends"
+        if fastapi_imp not in imports:
+            imports.append(fastapi_imp)
     elif chosen_info and chosen_info.enclosing_class:
         enc = chosen_info.enclosing_class
         class_instantiation += f"\n# Ou via conteneur {enc}:\n# deps = {enc}()\n# {var_name} = deps.{chosen_info.variable_name}"
