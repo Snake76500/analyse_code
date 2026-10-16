@@ -867,6 +867,55 @@ client = SyncApiClient(token="XYZ")
         self.assertEqual(ex_ping["call_target"], "client")
         self.assertIn("response = client.ping()", ex_ping["call_snippet"])
 
+    def test_match_microservices_with_in_memory_files_resolves_subclasses(self):
+        """
+        Verify that match_microservices with autogen_file_list properly resolves
+        subclasses (e.g. client.views.get_product_views) without disk directory dependencies.
+        """
+        autogen_code = """
+import httpx
+class SyncViewsApi:
+    def get_product_views(self, product_id: int):
+        return httpx.get(f"/products/{product_id}/views")
+
+class SyncApiClient:
+    def __init__(self, token: str):
+        self.views = SyncViewsApi()
+"""
+        dep_code = """
+from autogen_service.service import SyncApiClient
+client = SyncApiClient(token="TOKEN_XYZ")
+"""
+        manual_code = """
+import requests
+class ManualClient:
+    def get_product_views(self, product_id: int):
+        return requests.get(f"/products/{product_id}/views")
+"""
+        manual_files = [{"path": "service.py", "content": manual_code}]
+        autogen_files = [
+            {"path": "service.py", "content": autogen_code},
+            {"path": "service_dependency.py", "content": dep_code}
+        ]
+
+        m_calls = parse_files_in_memory(manual_files)
+        a_calls = parse_files_in_memory(autogen_files, resolve_parents=True)
+        dep_reg = build_dependency_registry_from_memory(autogen_files)
+
+        res = match_microservices(
+            manual_calls=m_calls,
+            autogen_calls=a_calls,
+            dependency_registry=dep_reg,
+            autogen_file_list=autogen_files
+        )
+
+        matched = [m for m in res.matches if m.status == "MATCHED"]
+        self.assertEqual(len(matched), 1)
+        ex = matched[0].call_example
+        self.assertIsNotNone(ex)
+        self.assertEqual(ex["call_target"], "client.views")
+        self.assertIn("response = client.views.get_product_views(", ex["call_snippet"])
+
 
 if __name__ == "__main__":
     unittest.main()

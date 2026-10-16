@@ -35,14 +35,14 @@ def sync_user_data(user_id: int):
 # ==============================================================================
 # APRÈS LA MIGRATION (Microservice Autogénéré)
 # ==============================================================================
-from autogen_service.service import AutogenApiClient
+from autogen_service.service import SyncApiClient
 
 def sync_user_data(user_id: int):
-    # Instanciation du client autogénéré avec token
-    client = AutogenApiClient(token="secret-api-key-123")
+    # Instanciation du client autogénéré synchrone avec token
+    client = SyncApiClient(token="secret-api-key-123")
 
-    # 1. getUserById avec id au lieu de user_id
-    profile = client.get_user_by_id(id=user_id)
+    # 1. getUserById via la sous-classe client.users avec id au lieu de user_id
+    profile = client.users.get_user_by_id(id=user_id)
 
     # 2. getCatalogSearch avec q au lieu de query et limit au lieu de page_size
     items = client.get_catalog_search(q="shoes", limit=10)
@@ -54,7 +54,7 @@ def sync_user_data(user_id: int):
         voucher="PROMO20"
     )
 
-    # 4. get_product_views vers le client autogénéré
-    views = client.get_product_views(product_id=456, view_id="desktop")
+    # 4. get_product_views via la sous-classe client.views vers le client autogénéré
+    views = client.views.get_product_views(product_id=456, view_id="desktop")
 
     return profile, items, order, views

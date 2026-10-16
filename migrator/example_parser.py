@@ -220,8 +220,15 @@ class ExampleMigrationParser:
             tree = ast.parse(code)
             for node in ast.walk(tree):
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                    method_name = node.func.attr
-                    if method_name.startswith("_") and not method_name.startswith("__"):
+                    # Extract attribute chain, e.g. client.views.get_product_views -> views.get_product_views
+                    parts = []
+                    curr = node.func
+                    while isinstance(curr, ast.Attribute):
+                        parts.append(curr.attr)
+                        curr = curr.value
+                    parts.reverse()
+                    method_name = ".".join(parts)
+                    if not method_name or parts[-1].startswith("_") and not parts[-1].startswith("__"):
                         continue
                     args = [ast.unparse(a) for a in node.args]
                     keywords = [kw.arg for kw in node.keywords if kw.arg]

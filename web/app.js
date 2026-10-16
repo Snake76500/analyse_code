@@ -68,6 +68,7 @@ const elements = {
     exampleModalHeading: document.getElementById('exampleModalHeading'),
     exampleModalBanner: document.getElementById('exampleModalBanner'),
     exampleModalDepFile: document.getElementById('exampleModalDepFile'),
+    exampleModalSubclassCard: document.getElementById('exampleModalSubclassCard'),
     exampleModalImports: document.getElementById('exampleModalImports'),
     exampleModalInstantiation: document.getElementById('exampleModalInstantiation'),
     exampleModalCall: document.getElementById('exampleModalCall'),
@@ -399,11 +400,18 @@ function renderMatrixTable() {
             const kindBadge = m.autogen_call.kind === 'client_call' ? 'Client' : 'Route';
             const calleeBadge = m.autogen_call.callee_function ? 
                 `<span class="func-meta-badge" style="color:#c084fc; background:rgba(168,85,247,0.12);" title="Fonction parente appelant ${escapeHtml(m.autogen_call.callee_function)}()">via ${escapeHtml(m.autogen_call.callee_function)}()</span>` : '';
+            
+            const callTarget = (m.call_example && m.call_example.call_target) ? m.call_example.call_target : '';
+            const callPathBadge = (m.call_example && m.call_example.call_path) ? 
+                `<span class="func-meta-badge" style="color:#0284c7; background:rgba(14,165,233,0.15); font-weight:700;" title="Path de sous-classe">${escapeHtml(m.call_example.call_target)}</span>` : '';
+            const displayFunc = callTarget ? `${callTarget}.${m.autogen_call.function_name}()` : `${m.autogen_call.function_name}()`;
+
             autogenHtml = `
                 <div class="func-cell">
-                    <span class="func-signature">${escapeHtml(m.autogen_call.function_name)}()</span>
+                    <span class="func-signature" style="color: var(--primary); font-weight: 700;">${escapeHtml(displayFunc)}</span>
                     <div class="func-meta">
                         <span class="func-meta-badge">${kindBadge}</span>
+                        ${callPathBadge}
                         ${calleeBadge}
                         <span>${escapeHtml(m.autogen_call.file_path)}:${m.autogen_call.line_number}</span>
                     </div>
@@ -549,8 +557,10 @@ window.openExampleModal = function(matchId) {
         <span style="font-family: var(--font-mono); font-weight: 600; margin-left: 8px;">${escapeHtml(match.normalized_endpoint)}</span>
     `;
 
+    const targetPrefix = (ex.call_target) ? `${ex.call_target}.` : '';
     const funcName = match.autogen_call ? match.autogen_call.function_name : ex.function_name;
-    elements.exampleModalHeading.textContent = `Exemple d'appel : ${funcName}()`;
+    const fullCallDisplay = `${targetPrefix}${funcName}()`;
+    elements.exampleModalHeading.textContent = `Exemple d'appel : ${fullCallDisplay}`;
 
     if (ex.dependency_file) {
         elements.exampleModalDepFile.textContent = `📦 Dépendance liée: ${escapeHtml(ex.dependency_file)}`;
@@ -561,7 +571,31 @@ window.openExampleModal = function(matchId) {
     }
 
     elements.exampleModalBanner.className = 'diff-summary-banner COMPATIBLE';
-    elements.exampleModalBanner.innerHTML = `Fonction autogénérée <code>${escapeHtml(funcName)}()</code> prête à l'emploi avec instanciation de la classe <code>${escapeHtml(ex.class_name)}</code>.`;
+    const subClassInfo = (ex.call_path) ? ` (via la sous-classe <code>${escapeHtml(ex.implementing_class || ex.call_path)}</code> accessible par <code>${escapeHtml(ex.call_target)}</code>)` : '';
+    elements.exampleModalBanner.innerHTML = `Appel autogénéré <code>${escapeHtml(fullCallDisplay)}</code> prêt à l'emploi avec instanciation de <code>${escapeHtml(ex.class_name)}</code>${subClassInfo}.`;
+
+    if (elements.exampleModalSubclassCard) {
+        if (ex.call_path) {
+            const originClass = ex.implementing_class || (match.autogen_call && (match.autogen_call.origin_class || match.autogen_call.class_name)) || 'Sous-classe';
+            elements.exampleModalSubclassCard.style.display = 'block';
+            elements.exampleModalSubclassCard.innerHTML = `
+                <div style="background: rgba(14, 165, 233, 0.08); border: 1px solid rgba(14, 165, 233, 0.35); border-radius: 8px; padding: 12px 16px;">
+                    <div style="color: #38bdf8; font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                        <span>⚡ Résolution de sous-classe (Path d'appel qualifié)</span>
+                        <span style="font-size: 0.75rem; background: rgba(14, 165, 233, 0.2); color: #38bdf8; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">${escapeHtml(ex.call_target)}</span>
+                    </div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6;">
+                        <div>• <strong>1. Classe d'origine de la fonction :</strong> <code style="color: #c084fc;">${escapeHtml(originClass)}</code></div>
+                        <div>• <strong>2. Variable instanciée dans <code>${escapeHtml(ex.class_name)}</code> :</strong> <code style="color: #38bdf8;">self.${escapeHtml(ex.call_path)} = ${escapeHtml(originClass)}(self)</code></div>
+                        <div>• <strong>3. Expression d'appel finale :</strong> <code style="color: #10b981; font-weight: 700;">response = ${escapeHtml(ex.call_target)}.${escapeHtml(funcName)}(...)</code></div>
+                    </div>
+                </div>
+            `;
+        } else {
+            elements.exampleModalSubclassCard.style.display = 'none';
+            elements.exampleModalSubclassCard.innerHTML = '';
+        }
+    }
 
     elements.exampleModalImports.textContent = (ex.imports || []).join('\n');
     elements.exampleModalInstantiation.textContent = ex.instantiation || '';

@@ -56,6 +56,8 @@ class CodeMigrationEngine:
 
             manual_name = match.manual_call.function_name
             autogen_name = match.autogen_call.function_name
+            if match.call_example and match.call_example.get("call_path"):
+                autogen_name = f"{match.call_example['call_path']}.{autogen_name}"
 
             # Build parameter mapping
             param_map = {}
@@ -91,13 +93,25 @@ class CodeMigrationEngine:
             else:
                 # Merge into existing mapping from example if missing
                 existing = self.rule.method_mappings[manual_name]
-                if not existing.autogen_method:
+                if match.call_example and match.call_example.get("call_path"):
+                    sub_prefix = match.call_example["call_path"] + "."
+                    if not existing.autogen_method.startswith(sub_prefix):
+                        existing.autogen_method = f"{sub_prefix}{match.autogen_call.function_name}"
+                elif not existing.autogen_method:
                     existing.autogen_method = autogen_name
                 for k, v in param_map.items():
                     if k not in existing.param_map:
                         existing.param_map[k] = v
                 if not existing.positional_map:
                     existing.positional_map = positional_map
+
+        # Ensure autogen_class_name uses SyncApiClient if available
+        if not self.rule.autogen_class_name or self.rule.autogen_class_name == "AutogenApiClient":
+            for match in self.matrix_result.matches:
+                if match.call_example and match.call_example.get("class_name"):
+                    if "sync" in match.call_example["class_name"].lower():
+                        self.rule.autogen_class_name = match.call_example["class_name"]
+                        break
 
     def migrate_source_code(self, source_code: str, file_path: str = "") -> FileMigrationResult:
         """

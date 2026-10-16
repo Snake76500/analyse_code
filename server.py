@@ -33,6 +33,12 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=WEB_DIR, **kwargs)
 
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
 
@@ -158,19 +164,21 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
                 autogen_method_index = build_class_method_index(file_list=autogen_files, calls=autogen_calls)
                 autogen_subattr_index = build_class_subattributes_index(file_list=autogen_files, dependency_registry=dep_registry)
             elif manual_path and autogen_path:
-                if not os.path.exists(manual_path):
+                abs_manual = os.path.abspath(manual_path)
+                abs_autogen = os.path.abspath(autogen_path)
+                if not os.path.exists(abs_manual):
                     self._error(f"Le chemin manuel '{manual_path}' est introuvable sur le serveur.")
                     return
-                if not os.path.exists(autogen_path):
+                if not os.path.exists(abs_autogen):
                     self._error(f"Le chemin autogénéré '{autogen_path}' est introuvable sur le serveur.")
                     return
-                manual_calls = parse_service_directory(manual_path, resolve_parents=manual_resolve)
-                autogen_calls = parse_service_directory(autogen_path, resolve_parents=autogen_resolve)
+                manual_calls = parse_service_directory(abs_manual, resolve_parents=manual_resolve)
+                autogen_calls = parse_service_directory(abs_autogen, resolve_parents=autogen_resolve)
                 manual_label = manual_path
-                autogen_label = autogen_path
-                dep_registry = build_dependency_registry_from_directory(autogen_path)
-                autogen_method_index = build_class_method_index(dir_path=autogen_path, calls=autogen_calls)
-                autogen_subattr_index = build_class_subattributes_index(dir_path=autogen_path, dependency_registry=dep_registry)
+                autogen_label = abs_autogen
+                dep_registry = build_dependency_registry_from_directory(abs_autogen)
+                autogen_method_index = build_class_method_index(dir_path=abs_autogen, calls=autogen_calls)
+                autogen_subattr_index = build_class_subattributes_index(dir_path=abs_autogen, dependency_registry=dep_registry)
             else:
                 self._error("Veuillez renseigner les chemins des deux microservices ou importer leurs fichiers.")
                 return
@@ -182,7 +190,8 @@ class MatrixServerHandler(SimpleHTTPRequestHandler):
                 autogen_label,
                 dependency_registry=dep_registry,
                 class_method_index=autogen_method_index,
-                class_subattributes_index=autogen_subattr_index
+                class_subattributes_index=autogen_subattr_index,
+                autogen_file_list=autogen_files if autogen_files else None
             )
 
             if parsed.path == "/api/analyze":
