@@ -37,11 +37,13 @@ class EndpointCall:
     callee_function: Optional[str] = None
     caller_chain: List[str] = field(default_factory=list)
     class_name: Optional[str] = None
+    origin_class: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "function_name": self.function_name,
             "class_name": self.class_name,
+            "origin_class": self.origin_class or self.class_name,
             "file_path": self.file_path,
             "line_number": self.line_number,
             "end_line_number": self.end_line_number,

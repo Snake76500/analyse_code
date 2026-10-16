@@ -14,23 +14,6 @@ class AutogenApiClient:
     def __init__(self, token: str):
         self._client = httpx.Client(base_url=SERVER_URL, headers={"Authorization": f"Bearer {token}"})
 
-    def _execute_product_views_request(self, product_id: int, view_id: str) -> Dict[str, Any]:
-        """Low-level internal API call generated from OpenAPI spec."""
-        response = self._client.request("GET", f"/products/{product_id}/views/{view_id}")
-        return response.json()
-
-    def get_product_views(self, product_id: int, view_id: str) -> Dict[str, Any]:
-        """Auto-generated operation: getProductViews calling _execute_product_views_request."""
-        return self._execute_product_views_request(product_id, view_id)
-
-    def get_user_by_id(self, id: str, expand: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Auto-generated operation: getUserById"""
-        params = {}
-        if expand:
-            params["expand"] = ",".join(expand)
-        response = self._client.request("GET", f"/users/{id}", params=params)
-        return response.json()
-
     def post_orders(self, customer_id: int, items: List[Dict[str, Any]], voucher: Optional[str] = None, currency: str = "EUR") -> Dict[str, Any]:
         """Auto-generated operation: postOrders"""
         payload = {
@@ -46,11 +29,6 @@ class AutogenApiClient:
         """Auto-generated operation: putInventory"""
         response = self._client.request("PUT", f"/inventory/{product_id}", json={"qty": qty})
         return response.json()
-
-    def delete_user(self, id: int) -> bool:
-        """Auto-generated operation: deleteUser"""
-        response = self._client.request("DELETE", f"/users/{id}")
-        return response.status_code == 204
 
     def get_catalog_search(self, q: str, limit: int = 25, offset: int = 0) -> List[Dict[str, Any]]:
         """Auto-generated operation: getCatalogSearch"""
@@ -71,7 +49,8 @@ class SyncViewsApi:
 
     def get_product_views(self, product_id: int, view_id: str) -> Dict[str, Any]:
         """Auto-generated operation: getProductViews calling endpoint /products/{product_id}/views/{view_id}."""
-        return self._client._execute_product_views_request(product_id, view_id)
+        response = self._client._client.request("GET", f"/products/{product_id}/views/{view_id}")
+        return response.json()
 
 
 # SynViewsApi alias for compatibility with alternative naming conventions
@@ -85,11 +64,16 @@ class SyncUsersApi:
 
     def get_user_by_id(self, id: str, expand: Optional[List[str]] = None) -> Dict[str, Any]:
         """Auto-generated operation: getUserById"""
-        return self._client.get_user_by_id(id, expand=expand)
+        params = {}
+        if expand:
+            params["expand"] = ",".join(expand)
+        response = self._client._client.request("GET", f"/users/{id}", params=params)
+        return response.json()
 
     def delete_user(self, id: int) -> bool:
         """Auto-generated operation: deleteUser"""
-        return self._client.delete_user(id)
+        response = self._client._client.request("DELETE", f"/users/{id}")
+        return response.status_code == 204
 
 
 class SyncApiClient(AutogenApiClient):

@@ -17,8 +17,10 @@ from .dependency_parser import (
     generate_function_call_example,
     build_class_method_index,
     build_class_subattributes_index,
+    get_sync_api_client_variable_map,
     DependencyContext
 )
+from .parser import get_function_origin_class_map
 
 def to_snake_case(name: str) -> str:
     """Convert camelCase or PascalCase to snake_case."""
@@ -304,6 +306,15 @@ def match_microservices(manual_calls: List[EndpointCall], autogen_calls: List[En
             dependency_registry=dep_registry
         )
 
+    sync_api_client_vars = get_sync_api_client_variable_map(
+        dir_path=autogen_path,
+        dependency_registry=dep_registry
+    )
+
+    function_origin_map = get_function_origin_class_map(
+        dir_path=autogen_path
+    )
+
     for m_idx, m_call in enumerate(manual_calls):
         matched_a_idx = None
 
@@ -406,7 +417,9 @@ def match_microservices(manual_calls: List[EndpointCall], autogen_calls: List[En
                     known_manual_classes=known_manual_classes,
                     known_autogen_classes=known_autogen_classes,
                     class_method_index=class_method_index,
-                    class_subattributes_index=class_subattributes_index
+                    class_subattributes_index=class_subattributes_index,
+                    sync_api_client_vars=sync_api_client_vars,
+                    function_origin_map=function_origin_map
                 )
             )
             matches.append(match_obj)
@@ -468,7 +481,9 @@ def match_microservices(manual_calls: List[EndpointCall], autogen_calls: List[En
                     known_manual_classes=known_manual_classes,
                     known_autogen_classes=known_autogen_classes,
                     class_method_index=class_method_index,
-                    class_subattributes_index=class_subattributes_index
+                    class_subattributes_index=class_subattributes_index,
+                    sync_api_client_vars=sync_api_client_vars,
+                    function_origin_map=function_origin_map
                 )
             )
             matches.append(match_obj)
