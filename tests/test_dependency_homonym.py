@@ -10,6 +10,8 @@ from analyzer.dependency_parser import (
     parse_dependency_content,
     generate_function_call_example,
     build_class_method_index,
+    build_class_subattributes_index,
+    resolve_function_call_path
 )
 from analyzer.models import EndpointCall, ParameterInfo
 from analyzer.matcher import match_microservices
@@ -569,6 +571,174 @@ sync_service = UsersSyncClient()
 
         # Confirm non-homonym does not cross
         self.assertIsNone(get_homonym_dependency("fichierc.py", registry))
+
+    def test_subclass_call_path_resolution(self):
+        """
+        User requirement:
+        Quand la class SyncApiClient possède des variables de type : self.views = SynViewsApi(self)
+        ou SyncViewsApi est une classe qui contient la définition d'une fonction appelant un endpoint,
+        l'exemple d'appel de la fonction sera response = client.views.nom_de_la_fonction.
+        L'analyse doit tenir compte des sous classes pour avoir le bon path d'appel des fonctions.
+        """
+        dep_content = """
+from openapi_client import SyncApiClient
+
+# Initialisation directe
+client = SyncApiClient(token="SECRET_TOKEN")
+"""
+        service_code = """
+class SynViewsApi:
+    def __init__(self, client):
+        self._client = client
+
+    def get_product_views(self, product_id: int, view_id: str):
+        return {"views": 42}
+
+class SyncUsersApi:
+    def __init__(self, client):
+        self._client = client
+
+    def get_user_profile(self, user_id: str):
+        return {"id": user_id}
+
+class SyncApiClient:
+    def __init__(self, token: str):
+        self.views = SynViewsApi(self)
+        self.users = SyncUsersApi(self)
+
+    def post_orders(self, items: list):
+        return {"status": "ok"}
+"""
+        registry = build_dependency_registry_from_memory([
+            {"path": "service_dependency.py", "content": dep_content}
+        ])
+        ctx = registry.get("service")
+        self.assertIsNotNone(ctx)
+
+        files = [
+            {"path": "service.py", "content": service_code},
+            {"path": "service_dependency.py", "content": dep_content}
+        ]
+        subattr_index = build_class_subattributes_index(file_list=files, dependency_registry=registry)
+        method_index = build_class_method_index(file_list=files)
+
+        # 1. Endpoint in sub-class SynViewsApi -> self.views
+        call_views = EndpointCall(
+            function_name="get_product_views",
+            class_name="SynViewsApi",
+            file_path="service.py",
+            line_number=5,
+            end_line_number=6,
+            kind="client_call",
+            http_method="GET",
+            raw_endpoint="/products/{product_id}/views/{view_id}",
+            normalized_endpoint="/products/{PARAM}/views/{PARAM}",
+            function_params=[ParameterInfo(name="product_id"), ParameterInfo(name="view_id")]
+        )
+        ex_views = generate_function_call_example(
+            call=call_views,
+            dependency_ctx=ctx,
+            class_method_index=method_index,
+            class_subattributes_index=subattr_index
+        )
+        self.assertEqual(ex_views["call_path"], "views")
+        self.assertIn("client.views.get_product_views", ex_views["call_snippet"])
+        self.assertIn('response = client.views.get_product_views(product_id=55, view_id="overview")', ex_views["call_snippet"])
+        self.assertIn("client = SyncApiClient(token='SECRET_TOKEN')", ex_views["instantiation"])
+
+        # 2. Endpoint in sub-class SyncUsersApi -> self.users
+        call_users = EndpointCall(
+            function_name="get_user_profile",
+            class_name="SyncUsersApi",
+            file_path="service.py",
+            line_number=12,
+            end_line_number=13,
+            kind="client_call",
+            http_method="GET",
+            raw_endpoint="/users/{user_id}",
+            normalized_endpoint="/users/{PARAM}",
+            function_params=[ParameterInfo(name="user_id")]
+        )
+        ex_users = generate_function_call_example(
+            call=call_users,
+            dependency_ctx=ctx,
+            class_method_index=method_index,
+            class_subattributes_index=subattr_index
+        )
+        self.assertEqual(ex_users["call_path"], "users")
+        self.assertIn("client.users.get_user_profile", ex_users["call_snippet"])
+
+        # 3. Direct method on SyncApiClient -> no sub-attribute prefix
+        call_orders = EndpointCall(
+            function_name="post_orders",
+            class_name="SyncApiClient",
+            file_path="service.py",
+            line_number=21,
+            end_line_number=22,
+            kind="client_call",
+            http_method="POST",
+            raw_endpoint="/orders",
+            normalized_endpoint="/orders",
+            function_params=[ParameterInfo(name="items")]
+        )
+        ex_orders = generate_function_call_example(
+            call=call_orders,
+            dependency_ctx=ctx,
+            class_method_index=method_index,
+            class_subattributes_index=subattr_index
+        )
+        self.assertEqual(ex_orders["call_path"], "")
+        self.assertIn("client.post_orders", ex_orders["call_snippet"])
+        self.assertNotIn("client..", ex_orders["call_snippet"])
+
+    def test_subclass_call_path_property_and_multi_level(self):
+        """
+        Test property getters and multi-level chained sub-class calls.
+        e.g. client.admin.audit.get_audit_logs(...)
+        """
+        dep_content = "from openapi import SyncApiClient\nclient = SyncApiClient()\n"
+        service_code = """
+class AuditApi:
+    def get_audit_logs(self, date: str):
+        pass
+
+class AdminApi:
+    def __init__(self, client):
+        self.audit = AuditApi()
+
+class SyncApiClient:
+    @property
+    def admin(self) -> AdminApi:
+        return AdminApi(self)
+"""
+        registry = build_dependency_registry_from_memory([
+            {"path": "service_dependency.py", "content": dep_content}
+        ])
+        ctx = registry.get("service")
+        files = [{"path": "service.py", "content": service_code}]
+        subattrs = build_class_subattributes_index(file_list=files, dependency_registry=registry)
+        methods = build_class_method_index(file_list=files)
+
+        call = EndpointCall(
+            function_name="get_audit_logs",
+            class_name="AuditApi",
+            file_path="service.py",
+            line_number=2,
+            end_line_number=3,
+            kind="client_call",
+            http_method="GET",
+            raw_endpoint="/audit",
+            normalized_endpoint="/audit",
+            function_params=[ParameterInfo(name="date")]
+        )
+        ex = generate_function_call_example(
+            call=call,
+            dependency_ctx=ctx,
+            class_method_index=methods,
+            class_subattributes_index=subattrs
+        )
+        self.assertEqual(ex["call_path"], "admin.audit")
+        self.assertIn("client.admin.audit.get_audit_logs", ex["call_snippet"])
 
 
 if __name__ == "__main__":

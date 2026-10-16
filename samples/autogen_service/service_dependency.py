@@ -38,7 +38,8 @@ class ServiceDependencies:
 manual_client = ManualServiceClient(api_key="MANUAL_DEV_KEY_123")
 
 # Déclaration directe pour le client autogénéré (SyncApiClient)
-sync_api_client = SyncApiClient(token="PROD_AUTH_TOKEN_XYZ")
+client = SyncApiClient(token="PROD_AUTH_TOKEN_XYZ")
+sync_api_client = client
 
 
 def get_manual_service(api_key: str = "MANUAL_DEV_KEY_123") -> ManualServiceClient:

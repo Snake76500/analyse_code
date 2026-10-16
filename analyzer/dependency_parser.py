@@ -5,6 +5,7 @@ Understands class declarations, imports, and generates realistic code call examp
 import ast
 import os
 import re
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Set, Tuple
 from .models import EndpointCall, ParameterInfo
@@ -50,6 +51,7 @@ class DependencyContext:
     instantiations_list: List[ClassInstantiationInfo] = field(default_factory=list)
     factory_functions: Dict[str, str] = field(default_factory=dict)  # ClassName -> "get_client()"
     dependency_classes: List[str] = field(default_factory=list)
+    sub_attributes: Dict[str, Dict[str, str]] = field(default_factory=dict)  # parent_class -> {sub_class -> attr_name}
 
 
 def extract_service_stem_from_dependency_path(file_path: str) -> Optional[str]:
@@ -278,6 +280,7 @@ class DependencyFileVisitor(ast.NodeVisitor):
         self.factory_functions: Dict[str, str] = {}
         self.dependency_classes: List[str] = []
         self.sync_classes: Set[str] = set()
+        self.sub_attributes: Dict[str, Dict[str, str]] = {}
 
     def visit_Import(self, node: ast.Import):
         try:
@@ -543,6 +546,13 @@ class DependencyFileVisitor(ast.NodeVisitor):
         self.instantiations[class_name] = info
         self.instantiations_list.append(info)
 
+        if enclosing_class:
+            enc_low = enclosing_class.lower()
+            if enc_low not in self.sub_attributes:
+                self.sub_attributes[enc_low] = {}
+            self.sub_attributes[enc_low][class_name.lower()] = var_name
+            self.sub_attributes[enc_low][class_name.split(".")[-1].lower()] = var_name
+
 
 def parse_dependency_content(content: str, file_path: str = "dependency.py") -> DependencyContext:
     """Parse the AST of a dependency declaration file."""
@@ -585,6 +595,7 @@ def parse_dependency_content(content: str, file_path: str = "dependency.py") -> 
         ctx.instantiations_list = visitor.instantiations_list
         ctx.factory_functions = visitor.factory_functions
         ctx.dependency_classes = visitor.dependency_classes
+        ctx.sub_attributes = visitor.sub_attributes
     except Exception as e:
         print(f"Warning: could not parse dependency file {file_path}: {e}")
 
@@ -812,18 +823,370 @@ def build_class_method_index(
     return index
 
 
+class ClassHierarchyVisitor(ast.NodeVisitor):
+    """
+    AST Visitor extracting class hierarchy, member attributes instantiating sub-classes,
+    properties, and method names to resolve precise call paths like client.views.function_name.
+    """
+    def __init__(self, file_path: str = ""):
+        self.file_path = file_path
+        # parent_class_lower -> { sub_class_lower: attribute_name }
+        self.sub_attributes: Dict[str, Dict[str, str]] = {}
+        # class_lower -> list of base class names (lowered)
+        self.class_bases: Dict[str, List[str]] = {}
+        # class_lower -> set of method names
+        self.class_methods: Dict[str, Set[str]] = {}
+
+    def visit_ClassDef(self, node: ast.ClassDef):
+        cls_name = node.name
+        cls_low = cls_name.lower()
+        if cls_low not in self.sub_attributes:
+            self.sub_attributes[cls_low] = {}
+        if cls_low not in self.class_methods:
+            self.class_methods[cls_low] = set()
+
+        bases = []
+        for base in node.bases:
+            try:
+                base_name = ast.unparse(base).split(".")[-1].lower()
+                bases.append(base_name)
+            except Exception:
+                pass
+        self.class_bases[cls_low] = bases
+
+        # Inspect class-level statements
+        for item in node.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                self.class_methods[cls_low].add(item.name)
+                # Check for @property
+                is_prop = any(
+                    (isinstance(d, ast.Name) and d.id == "property") or
+                    (isinstance(d, ast.Attribute) and d.attr == "property")
+                    for d in item.decorator_list
+                )
+                if is_prop:
+                    ret_type = ""
+                    if item.returns:
+                        try:
+                            ret_type = ast.unparse(item.returns).split(".")[-1]
+                        except Exception:
+                            pass
+                    if not ret_type:
+                        for s in item.body:
+                            if isinstance(s, ast.Return) and isinstance(s.value, ast.Call):
+                                try:
+                                    ret_type = ast.unparse(s.value.func).split(".")[-1]
+                                    break
+                                except Exception:
+                                    pass
+                    if ret_type:
+                        self._register_sub_attribute(cls_name, ret_type, item.name)
+
+                # Inspect statements in method body (e.g. __init__ or setup methods)
+                for stmt in item.body:
+                    self._inspect_statement(cls_name, stmt)
+
+            elif isinstance(item, ast.AnnAssign):
+                target_name = ""
+                if isinstance(item.target, ast.Name):
+                    target_name = item.target.id
+                type_cls = ""
+                if item.annotation:
+                    try:
+                        type_cls = ast.unparse(item.annotation).split(".")[-1]
+                    except Exception:
+                        pass
+                if target_name and type_cls:
+                    self._register_sub_attribute(cls_name, type_cls, target_name)
+
+            elif isinstance(item, ast.Assign) and isinstance(item.value, ast.Call):
+                for target in item.targets:
+                    if isinstance(target, ast.Name):
+                        try:
+                            func_name = ast.unparse(item.value.func).split(".")[-1]
+                            self._register_sub_attribute(cls_name, func_name, target.id)
+                        except Exception:
+                            pass
+
+        self.generic_visit(node)
+
+    def _inspect_statement(self, cls_name: str, stmt: ast.AST):
+        # self.<attr> = SubClass(...)
+        if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call):
+            call_cls = ""
+            try:
+                call_cls = ast.unparse(stmt.value.func).split(".")[-1]
+            except Exception:
+                pass
+            if call_cls:
+                for target in stmt.targets:
+                    attr_name = self._extract_attr_name(target, allow_bare_name=False)
+                    if attr_name:
+                        self._register_sub_attribute(cls_name, call_cls, attr_name)
+
+        # self.<attr>: SubClass = ... or self.<attr>: SubClass
+        elif isinstance(stmt, ast.AnnAssign):
+            attr_name = self._extract_attr_name(stmt.target, allow_bare_name=False)
+            type_cls = ""
+            if stmt.annotation:
+                try:
+                    type_cls = ast.unparse(stmt.annotation).split(".")[-1]
+                except Exception:
+                    pass
+            if not type_cls and isinstance(stmt.value, ast.Call):
+                try:
+                    type_cls = ast.unparse(stmt.value.func).split(".")[-1]
+                except Exception:
+                    pass
+            if attr_name and type_cls:
+                self._register_sub_attribute(cls_name, type_cls, attr_name)
+
+    def _extract_attr_name(self, target_node: ast.AST, allow_bare_name: bool = False) -> Optional[str]:
+        if isinstance(target_node, ast.Attribute):
+            if isinstance(target_node.value, ast.Name) and target_node.value.id == "self":
+                if not target_node.attr.startswith("_"):
+                    return target_node.attr
+            try:
+                t_str = ast.unparse(target_node)
+                if t_str.startswith("self.") and not t_str.startswith("self._"):
+                    return t_str[5:]
+            except Exception:
+                pass
+        elif allow_bare_name and isinstance(target_node, ast.Name):
+            if not target_node.id.startswith("_"):
+                return target_node.id
+        return None
+
+    def _register_sub_attribute(self, parent_cls: str, child_cls: str, attr_name: str):
+        if not parent_cls or not child_cls or not attr_name:
+            return
+        p_low = parent_cls.lower()
+        if p_low not in self.sub_attributes:
+            self.sub_attributes[p_low] = {}
+
+        c_low = child_cls.lower()
+        self.sub_attributes[p_low][c_low] = attr_name
+
+        # Register normalized variants (e.g. SynViewsApi <-> SyncViewsApi <-> ViewsApi)
+        variants = {c_low}
+        if c_low.startswith("syn") and not c_low.startswith("sync"):
+            variants.add("sync" + c_low[3:])
+        elif c_low.startswith("sync"):
+            variants.add("syn" + c_low[4:])
+
+        stripped = re.sub(r'^(sync|syn|async)', '', c_low)
+        stripped = re.sub(r'(api|client|service|controller)$', '', stripped)
+        if stripped:
+            variants.add(stripped)
+            variants.add(stripped + "api")
+            variants.add("sync" + stripped + "api")
+            variants.add("syn" + stripped + "api")
+
+        for v in variants:
+            if v not in self.sub_attributes[p_low]:
+                self.sub_attributes[p_low][v] = attr_name
+
+    def finalize_inheritance(self):
+        """Propagate inherited sub-attributes from base classes down to subclasses."""
+        changed = True
+        iterations = 0
+        while changed and iterations < 10:
+            changed = False
+            iterations += 1
+            for cls_low, bases in self.class_bases.items():
+                for base_low in bases:
+                    if base_low in self.sub_attributes:
+                        for child_key, attr_val in self.sub_attributes[base_low].items():
+                            if child_key not in self.sub_attributes[cls_low]:
+                                self.sub_attributes[cls_low][child_key] = attr_val
+                                changed = True
+                    if base_low in self.class_methods:
+                        for m in self.class_methods[base_low]:
+                            if m not in self.class_methods[cls_low]:
+                                self.class_methods[cls_low].add(m)
+                                changed = True
+
+
+def build_class_subattributes_index(
+    dir_path: str = "",
+    file_list: Optional[List[Dict[str, str]]] = None,
+    dependency_registry: Optional[Dict[str, DependencyContext]] = None
+) -> Dict[str, Dict[str, str]]:
+    """
+    Scan all autogenerated microservice files and dependency declaration files
+    to build an index of parent_class_name.lower() -> { sub_class_name.lower(): attribute_name }.
+    Enables precise path resolution such as:
+    SyncApiClient -> SynViewsApi -> self.views = SynViewsApi(self) -> path: "views"
+    """
+    visitor = ClassHierarchyVisitor()
+
+    def _parse_code(code: str, fname: str = ""):
+        try:
+            tree = ast.parse(code, filename=fname)
+            visitor.visit(tree)
+        except Exception:
+            pass
+
+    # 1. From virtual file list
+    if file_list:
+        for item in file_list:
+            path = item.get("path", "")
+            content = item.get("content", "")
+            if path.endswith(".py") and content:
+                _parse_code(content, path)
+
+    # 2. From disk directory
+    if dir_path and os.path.exists(dir_path):
+        if os.path.isfile(dir_path):
+            try:
+                with open(dir_path, "r", encoding="utf-8", errors="replace") as f:
+                    _parse_code(f.read(), dir_path)
+            except Exception:
+                pass
+        else:
+            for root, _, files in os.walk(dir_path):
+                if any(skip in root for skip in ["__pycache__", ".venv", "venv", ".git"]):
+                    continue
+                for file in files:
+                    if file.endswith(".py"):
+                        full_p = os.path.join(root, file)
+                        try:
+                            with open(full_p, "r", encoding="utf-8", errors="replace") as f:
+                                _parse_code(f.read(), full_p)
+                        except Exception:
+                            pass
+
+    # 3. From dependency_registry
+    if dependency_registry:
+        for ctx in dependency_registry.values():
+            if ctx.file_content:
+                _parse_code(ctx.file_content, ctx.file_path or "dependency.py")
+            if ctx.sub_attributes:
+                for p_cls, sub_map in ctx.sub_attributes.items():
+                    if p_cls not in visitor.sub_attributes:
+                        visitor.sub_attributes[p_cls] = {}
+                    visitor.sub_attributes[p_cls].update(sub_map)
+
+    visitor.finalize_inheritance()
+    return visitor.sub_attributes
+
+
+def resolve_function_call_path(
+    root_class: str,
+    func_name: str,
+    callee_name: Optional[str] = None,
+    target_class: Optional[str] = None,
+    class_method_index: Optional[Dict[str, Set[str]]] = None,
+    class_subattributes_index: Optional[Dict[str, Dict[str, str]]] = None
+) -> Tuple[str, str]:
+    """
+    Resolve the exact attribute call path from the root instantiated client
+    to the implementing sub-class defining func_name.
+    
+    Example:
+      root_class: "SyncApiClient"
+      func_name: "get_product_views"
+      SyncApiClient has self.views = SynViewsApi(self)
+      SynViewsApi defines get_product_views
+      -> returns ("views", "SynViewsApi")
+      Resulting call: response = client.views.get_product_views(...)
+    """
+    if not root_class:
+        return "", root_class
+
+    c_methods = class_method_index or {}
+    c_subattrs = class_subattributes_index or {}
+
+    root_low = root_class.lower()
+    root_base_low = root_class.split(".")[-1].lower()
+
+    # Find all classes that implement func_name or callee_name
+    classes_with_method: Set[str] = set()
+    for cls_name, methods in c_methods.items():
+        if func_name in methods or (callee_name and callee_name in methods):
+            classes_with_method.add(cls_name.lower())
+            classes_with_method.add(cls_name.split(".")[-1].lower())
+
+    if target_class:
+        classes_with_method.add(target_class.lower())
+        classes_with_method.add(target_class.split(".")[-1].lower())
+
+    # If classes_with_method is empty, check if func_name contains clue
+    # e.g. get_product_views -> "views"
+    inferred_sub_stem = None
+    m_stem = re.search(r'(views?|users?|orders?|items?|products?|inventory|auth|payments?|audit)', func_name, re.I)
+    if m_stem:
+        inferred_sub_stem = m_stem.group(1).lower()
+
+    # Priority 1: Check BFS in class_subattributes_index starting from root_class
+    start_nodes = [root_low]
+    if root_base_low != root_low:
+        start_nodes.append(root_base_low)
+
+    for start_node in start_nodes:
+        if start_node not in c_subattrs and not any(start_node in k for k in c_subattrs):
+            continue
+
+        queue = deque([(start_node, [])])
+        visited = {start_node}
+
+        while queue:
+            curr_cls, path = queue.popleft()
+
+            # If current node is a sub-step and implements the target method
+            if path and (curr_cls in classes_with_method or (target_class and curr_cls == target_class.lower())):
+                return ".".join(path), curr_cls
+
+            sub_map = c_subattrs.get(curr_cls, {})
+            for sub_cls, attr_name in sub_map.items():
+                sub_low = sub_cls.lower()
+                if sub_low in classes_with_method or (target_class and sub_low == target_class.lower()):
+                    return ".".join(path + [attr_name]), sub_cls
+                if sub_low not in visited:
+                    visited.add(sub_low)
+                    queue.append((sub_low, path + [attr_name]))
+
+    # Priority 2: Check if func_name is directly on root_class or its base classes
+    root_methods = c_methods.get(root_low) or c_methods.get(root_base_low) or set()
+    if func_name in root_methods or (callee_name and callee_name in root_methods):
+        return "", root_class
+
+    # Priority 3: Inferred sub-attribute from inferred_sub_stem
+    if inferred_sub_stem:
+        for start_node in start_nodes:
+            sub_map = c_subattrs.get(start_node, {})
+            for sub_cls, attr_name in sub_map.items():
+                if inferred_sub_stem in attr_name.lower() or inferred_sub_stem in sub_cls.lower():
+                    return attr_name, sub_cls
+
+    # Priority 4: If target_class is a sub-class like SynViewsApi / SyncViewsApi,
+    # infer attribute name directly by cleaning the name ONLY IF root has this attribute
+    if target_class and target_class.lower() != root_low and target_class.lower() != root_base_low:
+        t_clean = re.sub(r'^(sync|syn|async)', '', target_class, flags=re.I)
+        t_clean = re.sub(r'(api|client|service|controller)$', '', t_clean, flags=re.I).lower()
+        if t_clean:
+            for start_node in start_nodes:
+                sub_map = c_subattrs.get(start_node, {})
+                for sub_cls, attr_name in sub_map.items():
+                    if attr_name.lower() == t_clean or t_clean in attr_name.lower():
+                        return attr_name, target_class
+
+    return "", root_class
+
+
 def reverse_engineer_autogen_dependency(
     call: EndpointCall,
     dependency_ctx: DependencyContext,
     class_method_index: Dict[str, Set[str]],
     manual_service_path: str = "",
     known_manual_classes: Optional[Set[str]] = None,
-    service_root_path: str = ""
+    service_root_path: str = "",
+    class_subattributes_index: Optional[Dict[str, Dict[str, str]]] = None
 ) -> Tuple[Optional[ClassInstantiationInfo], str]:
     """
     Reverse engineering to find the exact dependency linked to the autogenerated function:
     1. Identify all candidate source classes in the autogenerated microservice that define or implement call.function_name.
-    2. Check which candidate in _dependency.py provides/instantiates that specific class.
+    2. Check which candidate in _dependency.py provides/instantiates that specific class or provides sub-attributes linking to it.
     3. Verify method existence on candidates.
     4. Reject any dependency associated with the manual microservice.
     """
@@ -858,6 +1221,19 @@ def reverse_engineer_autogen_dependency(
             has_sync_api_client=True
         )
         sync_candidates = [synth]
+
+    # Prioritize module-level direct instantiations over inner class attributes,
+    # and prefer standard variable name 'client' if available
+    if sync_candidates:
+        sync_candidates.sort(key=lambda c: (
+            bool(c.enclosing_class),
+            0 if c.variable_name == "client" else (1 if "sync" in c.variable_name else 2)
+        ))
+    elif valid_candidates:
+        valid_candidates.sort(key=lambda c: (
+            bool(c.enclosing_class),
+            0 if c.variable_name == "client" else (1 if "sync" in c.variable_name else 2)
+        ))
 
     # Target pool strictly prioritizes SyncApiClient candidates when available
     candidate_pool = sync_candidates if sync_candidates else valid_candidates
@@ -943,6 +1319,16 @@ def reverse_engineer_autogen_dependency(
             if c_name_low in candidate_source_classes or c_base_low in candidate_source_classes:
                 return info, info.class_name
 
+        # Priority 3A.2: Candidate whose sub-attributes link to one of candidate_source_classes
+        if class_subattributes_index:
+            for info in candidate_pool:
+                c_name_low = info.class_name.lower()
+                c_base_low = info.class_name.split(".")[-1].lower()
+                sub_map = class_subattributes_index.get(c_name_low) or class_subattributes_index.get(c_base_low) or {}
+                for target_sub in sub_map.keys():
+                    if target_sub in candidate_source_classes:
+                        return info, info.class_name
+
         for info in candidate_pool:
             for sc in candidate_source_classes:
                 if re.search(r'\b' + re.escape(sc) + r'\b', info.import_line.lower()):
@@ -984,12 +1370,15 @@ def generate_function_call_example(
     manual_service_path: str = "",
     known_manual_classes: Optional[Set[str]] = None,
     known_autogen_classes: Optional[Set[str]] = None,
-    class_method_index: Optional[Dict[str, Set[str]]] = None
+    class_method_index: Optional[Dict[str, Set[str]]] = None,
+    class_subattributes_index: Optional[Dict[str, Dict[str, str]]] = None
 ) -> Dict[str, Any]:
     """
     Generate an example of function call strictly using the dependencies
     of the autogenerated microservice (never manual microservice dependencies),
     resolved via reverse engineering from call.function_name.
+    Takes into account sub-classes (e.g. self.views = SynViewsApi(self))
+    to generate the exact call path (e.g. response = client.views.get_product_views(...)).
     """
     func_name = call.function_name
     file_path = call.file_path or "service.py"
@@ -998,6 +1387,17 @@ def generate_function_call_example(
     # Ensure class_method_index is available
     if class_method_index is None:
         class_method_index = build_class_method_index(dir_path=service_root_path, calls=[call])
+
+    # Ensure class_subattributes_index is available
+    if class_subattributes_index is None:
+        dep_reg = None
+        if dependency_ctx:
+            dep_key = os.path.splitext(os.path.basename(dependency_ctx.file_path or "service"))[0].lower()
+            dep_reg = {dep_key: dependency_ctx}
+        class_subattributes_index = build_class_subattributes_index(
+            dir_path=service_root_path,
+            dependency_registry=dep_reg
+        )
 
     chosen_info: Optional[ClassInstantiationInfo] = None
     class_name = call.class_name or "AutogenApiClient"
@@ -1009,7 +1409,8 @@ def generate_function_call_example(
             class_method_index=class_method_index,
             manual_service_path=manual_service_path,
             known_manual_classes=known_manual_classes,
-            service_root_path=service_root_path
+            service_root_path=service_root_path,
+            class_subattributes_index=class_subattributes_index
         )
         if resolved_class:
             class_name = resolved_class
@@ -1061,7 +1462,19 @@ def generate_function_call_example(
     if needed_types:
         imports.insert(0, f"from typing import {', '.join(needed_types)}")
 
-    # 2. Build Call Parameters Example
+    # Resolve exact call path through sub-classes (e.g. client.views.get_product_views)
+    call_path_prefix, implementing_class = resolve_function_call_path(
+        root_class=chosen_info.class_name if chosen_info else class_name,
+        func_name=func_name,
+        callee_name=call.callee_function,
+        target_class=call.class_name,
+        class_method_index=class_method_index,
+        class_subattributes_index=class_subattributes_index
+    )
+
+    call_target = f"{var_name}.{call_path_prefix}" if call_path_prefix else var_name
+
+    # Build Call Parameters Example
     call_args = []
     for p in call.function_params:
         if p.name in ("self", "cls"):
@@ -1070,15 +1483,15 @@ def generate_function_call_example(
         call_args.append(f"{p.name}={val}")
 
     if len(call_args) <= 2 and sum(len(a) for a in call_args) < 50:
-        call_str = f"response = {var_name}.{func_name}({', '.join(call_args)})"
+        call_str = f"response = {call_target}.{func_name}({', '.join(call_args)})"
     else:
         formatted_args = ",\n    ".join(call_args)
-        call_str = f"response = {var_name}.{func_name}(\n    {formatted_args}\n)"
+        call_str = f"response = {call_target}.{func_name}(\n    {formatted_args}\n)"
 
-    # 3. Assemble Complete Snippet
+    # Assemble Complete Snippet
     snippet_parts = [
         "# ==================================================",
-        f"# Exemple d'appel pour la fonction autogénérée: {func_name}()",
+        f"# Exemple d'appel pour la fonction autogénérée: {call_target}.{func_name}()",
         f"# Endpoint: [{call.http_method}] {call.normalized_endpoint}",
     ]
     if dep_file and chosen_info:
@@ -1098,6 +1511,9 @@ def generate_function_call_example(
     return {
         "function_name": func_name,
         "class_name": class_name,
+        "implementing_class": implementing_class,
+        "call_path": call_path_prefix,
+        "call_target": call_target,
         "variable_name": var_name,
         "dependency_file": os.path.basename(dep_file) if (dep_file and chosen_info) else None,
         "imports": imports,

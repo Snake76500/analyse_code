@@ -64,9 +64,41 @@ class AutogenApiClient:
         return response.json()
 
 
+class SyncViewsApi:
+    """Sub-API client for product views endpoints."""
+    def __init__(self, client: "AutogenApiClient"):
+        self._client = client
+
+    def get_product_views(self, product_id: int, view_id: str) -> Dict[str, Any]:
+        """Auto-generated operation: getProductViews calling endpoint /products/{product_id}/views/{view_id}."""
+        return self._client._execute_product_views_request(product_id, view_id)
+
+
+# SynViewsApi alias for compatibility with alternative naming conventions
+SynViewsApi = SyncViewsApi
+
+
+class SyncUsersApi:
+    """Sub-API client for user endpoints."""
+    def __init__(self, client: "AutogenApiClient"):
+        self._client = client
+
+    def get_user_by_id(self, id: str, expand: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Auto-generated operation: getUserById"""
+        return self._client.get_user_by_id(id, expand=expand)
+
+    def delete_user(self, id: int) -> bool:
+        """Auto-generated operation: deleteUser"""
+        return self._client.delete_user(id)
+
+
 class SyncApiClient(AutogenApiClient):
     """Synchronous API Client (SyncApiClient) generated from OpenAPI spec."""
-    pass
+
+    def __init__(self, token: str):
+        super().__init__(token)
+        self.views = SyncViewsApi(self)
+        self.users = SyncUsersApi(self)
 
 
 # Server route handlers generated from spec
